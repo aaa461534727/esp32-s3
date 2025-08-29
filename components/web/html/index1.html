@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32管理页面</title>
+    <style>
+        /* 保留原有样式并优化CSS样式 */
+        .input-group { 
+            margin: 15px 0;
+            display: flex;
+            align-items: center;
+        }
+        input[type="text"] { 
+            width: 300px;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button { 
+            padding: 8px 20px;
+            margin-left: 10px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        #dataDisplay {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+        }
+        /* 新增文件上传相关样式 */
+        .file-upload-group {
+            margin: 20px 0;
+            border-top: 2px solid #eee;
+            padding-top: 20px;
+        }
+        /* ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓ 新增的OTA相关样式放在这里 ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓ */
+        #otaProgress {
+            width: 300px;
+            height: 20px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            margin: 10px 0;
+            display: none;
+        }
+        #progressBar {
+            width: 0%;
+            height: 100%;
+            background: #4CAF50;
+            border-radius: 10px;
+            transition: width 0.3s ease;
+        }
+        /* ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑ 新增的OTA相关样式放在这里 ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑ */
+    </style>
+</head>
+<body>
+    <h1>ESP32数据管理</h1>
+    
+    <!-- 原始输入模块HTML -->
+    <div class="input-group">
+        <input type="text" id="inputBasicId" placeholder="基本ID（最大21字符）">
+        <button onclick="sendBasicId()">修改基本ID</button>
+    </div>
+
+    <div class="input-group">
+        <input type="text" id="inputCustomDesc" placeholder="自定义描述（最大18字符）">
+        <button onclick="sendCustomDesc()">修改自定义报文</button>
+    </div>
+
+    <div class="input-group">
+        <input type="text" id="inputRunDesc" placeholder="运行描述（最大23字符）">
+        <button onclick="sendRunDesc()">修改运行描述报文</button>
+    </div>
+
+    <div class="input-group">
+        <input type="text" id="inputOperator" placeholder="操作人（最大20字符）">
+        <button onclick="sendOperator()">修改操作人报文</button>
+    </div>
+    <!-- 原始输入模块end -->
+
+    <!-- 新增数据展示模块 -->
+    <div id="dataDisplay">
+        <p>接收数据：<input type="text" id="receivedData" readonly></p>
+    </div>
+
+    <!-- ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓ 新增的OTA升级模块放在这里 ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓ -->
+    <div class="file-upload-group">
+        <h3>系统升级</h3>
+        <input type="file" id="otaFile" accept=".bin" style="display:none;">
+        <button onclick="document.getElementById('otaFile').click()">选择固件文件</button>
+        <span id="fileName" style="margin-left:10px;color:#666"></span>
+        <div id="otaProgress">
+            <div id="progressBar"></div>
+        </div>
+        <button onclick="startOTA()" style="margin-top:10px">开始固件升级</button>
+    </div>
+    <!-- ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑ 新增的OTA升级模块放在这里 ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑ -->
+
+    <script>
+        // WebSocket动态连接JavaScript
+        const ws = new WebSocket("ws://" + window.location.host + "/ws");
+
+        // ================= 发送模块 =================
+        // 通用输入校验函数
+        function validateInput(value, maxLength, fieldName) {
+            if (value.length > maxLength) {
+                alert(`${fieldName}超过最大长度（${maxLength}字符）`);
+                return false;
+            }
+            return true;
+        }
+
+        // 数据发送函数组
+        function sendBasicId() {
+            const data = document.getElementById("inputBasicId").value;
+            if (validateInput(data, 21, "基本ID")) {
+                ws.send(`BASIC_ID:${data}`);
+            }
+        }
+
+        function sendCustomDesc() {
+            const data = document.getElementById("inputCustomDesc").value;
+            if (validateInput(data, 18, "自定义描述")) {
+                ws.send(`CUSTOM_DESC:${data}`);
+            }
+        }
+
+        function sendRunDesc() {
+            const data = document.getElementById("inputRunDesc").value;
+            if (validateInput(data, 23, "运行描述")) {
+                ws.send(`RUN_DESC:${data}`);
+            }
+        }
+
+        function sendOperator() {
+            const data = document.getElementById("inputOperator").value;
+            if (validateInput(data, 20, "操作人描述")) {
+                ws.send(`OPERATOR:${data}`);
+            }
+        }
+
+        // ================= 接收模块 =================
+        ws.onopen = () => {
+            console.log("WebSocket连接已建立");
+            document.getElementById("receivedData").value = "连接已就绪";
+        };
+
+        ws.onerror = (error) => {
+            console.error("WebSocket错误:", error);
+            document.getElementById("receivedData").value = "连接错误";
+        };
+
+        ws.onmessage = (event) => {
+            const data = event.data;
+            console.log("收到数据:", data);
+            
+            // 数据展示逻辑
+            document.getElementById("receivedData").value = data;
+            
+            // 自动清空输入框（可选）
+            // document.querySelectorAll('.input-group input').forEach(input => input.value = '');
+        };
+        
+        // ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓ 新增的OTA相关代码放在这里 ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+        document.getElementById('otaFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            document.getElementById('fileName').textContent = file.name;
+        });
+
+        async function startOTA() {
+            const file = document.getElementById('otaFile').files[0];
+            if(!file) return alert('请选择固件文件');
+            
+            document.getElementById('otaProgress').style.display = 'block';
+            
+            const formData = new FormData();
+            formData.append('firmware', file);
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if(response.ok){
+                    alert('升级成功，设备即将重启');
+                    setTimeout(() => location.reload(), 2000);
+                }
+            } catch(err) {
+                console.error('OTA失败:', err);
+                alert('升级失败: ' + err.message);
+            }
+        }
+        // ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑ 新增的OTA相关代码放在这里 ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑   
+    </script>
+</body>
+</html>

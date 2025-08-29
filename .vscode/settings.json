@@ -1,0 +1,29 @@
+{
+    "C_Cpp.intelliSenseEngine": "default",
+    "idf.espIdfPathWin": "C:/Espressif/frameworks/esp-idf-v5.1.2/",
+    "idf.pythonInstallPath": "C:\\Espressif\\tools\\idf-python\\3.11.2\\python.exe",
+    "idf.openOcdConfigs": [
+        "board/esp32s3-bridge.cfg"
+    ],
+    "idf.portWin": "COM4",
+    "idf.toolsPathWin": "C:\\Espressif",
+    "idf.flashType": "UART",
+    "idf.customExtraVars": {
+        "IDF_TARGET": "esp32s3"
+    },
+    "files.associations": {
+        "esp_log.h": "c",
+        "esp_mac.h": "c",
+        "string.h": "c",
+        "string_view": "c",
+        "regex": "c",
+        "nvs_flash.h": "c",
+        "wifi_ap.h": "c",
+        "global.h": "c",
+        "web_server.h": "c",
+        "sdkconfig.h": "c",
+        "opendroneid.h": "c",
+        "netdb.h": "c"
+    },
+    "idf.currentSetup": "C:/Espressif/frameworks/esp-idf-v5.1.2/"
+}

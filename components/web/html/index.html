@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32管理页面</title>
+    <style>
+        /* 保留原有样式并优化CSS样式 */
+        .input-group { 
+            margin: 15px 0;
+            display: flex;
+            align-items: center;
+        }
+        input[type="text"] { 
+            width: 300px;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button { 
+            padding: 8px 20px;
+            margin-left: 10px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        #dataDisplay {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+        }
+        /* 新增文件上传相关样式 */
+        .file-upload-group {
+            margin: 20px 0;
+            border-top: 2px solid #eee;
+            padding-top: 20px;
+        }
+        /* ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓ 新增的OTA相关样式放在这里 ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓ */
+        #otaProgress {
+            width: 300px;
+            height: 20px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            margin: 10px 0;
+            display: none;
+            position: relative;
+            overflow: hidden;
+        }
+        #progressBar {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50 0%, #45a049 100%);
+            border-radius: 10px;
+            transition: width 0.3s ease;
+            box-shadow: 0 2px 5px rgba(76,175,80,0.3);
+        }
+        /* ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑ 新增的OTA相关样式放在这里 ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑ */
+    </style>
+</head>
+<body>
+    <h1>ESP32数据管理</h1>
+    
+    <!-- 原始输入模块HTML -->
+    <div class="input-group">
+        <input type="text" id="inputBasicId" placeholder="基本ID（最大21字符）">
+        <button onclick="sendBasicId()">修改基本ID</button>
+    </div>
+
+    <div class="input-group">
+        <input type="text" id="inputCustomDesc" placeholder="自定义描述（最大18字符）">
+        <button onclick="sendCustomDesc()">修改自定义报文</button>
+    </div>
+
+    <div class="input-group">
+        <input type="text" id="inputRunDesc" placeholder="运行描述（最大23字符）">
+        <button onclick="sendRunDesc()">修改运行描述报文</button>
+    </div>
+
+    <div class="input-group">
+        <input type="text" id="inputOperator" placeholder="操作人（最大20字符）">
+        <button onclick="sendOperator()">修改操作人报文</button>
+    </div>
+    <!-- 原始输入模块end -->
+
+    <!-- 新增数据展示模块 -->
+    <div id="dataDisplay">
+        <p>接收数据：<input type="text" id="receivedData" readonly></p>
+    </div>
+
+    <!-- ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓ 新增的OTA升级模块放在这里 ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓ -->
+    <div class="file-upload-group">
+        <h3>系统升级</h3>
+        <input type="file" id="otaFile" accept=".bin" style="display:none;">
+        <button onclick="document.getElementById('otaFile').click()">选择固件文件</button>
+        <span id="fileName" style="margin-left:10px;color:#666"></span>
+        <!-- 进度条容器 -->
+        <div id="otaProgress">
+            <div id="progressBar"></div>
+        </div>
+        <button onclick="startOTA()" style="margin-top:10px">开始固件升级</button>
+        <!-- 状态提示 -->
+        <div id="status" style="color:#666;margin-top:8px;"></div>
+    </div>
+    <!-- ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑ 新增的OTA升级模块放在这里 ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑ -->
+
+    <script>
+        // WebSocket动态连接JavaScript
+        const ws = new WebSocket("ws://" + window.location.host + "/ws");
+
+        // ================= 发送模块 =================
+        // 通用输入校验函数
+        function validateInput(value, maxLength, fieldName) {
+            if (value.length > maxLength) {
+                alert(`${fieldName}超过最大长度（${maxLength}字符）`);
+                return false;
+            }
+            return true;
+        }
+
+        // 数据发送函数组
+        function sendBasicId() {
+            const data = document.getElementById("inputBasicId").value;
+            if (validateInput(data, 21, "基本ID")) {
+                ws.send(`BASIC_ID:${data}`);
+            }
+        }
+
+        function sendCustomDesc() {
+            const data = document.getElementById("inputCustomDesc").value;
+            if (validateInput(data, 18, "自定义描述")) {
+                ws.send(`CUSTOM_DESC:${data}`);
+            }
+        }
+
+        function sendRunDesc() {
+            const data = document.getElementById("inputRunDesc").value;
+            if (validateInput(data, 23, "运行描述")) {
+                ws.send(`RUN_DESC:${data}`);
+            }
+        }
+
+        function sendOperator() {
+            const data = document.getElementById("inputOperator").value;
+            if (validateInput(data, 20, "操作人描述")) {
+                ws.send(`OPERATOR:${data}`);
+            }
+        }
+
+        // ================= 接收模块 =================
+        ws.onopen = () => {
+            console.log("WebSocket连接已建立");
+            document.getElementById("receivedData").value = "连接已就绪";
+        };
+
+        ws.onerror = (error) => {
+            console.error("WebSocket错误:", error);
+            document.getElementById("receivedData").value = "连接错误";
+        };
+
+        ws.onmessage = (event) => {
+            const data = event.data;
+            console.log("收到数据:", data);
+            
+            // 数据展示逻辑
+            document.getElementById("receivedData").value = data;
+            
+            // 自动清空输入框（可选）
+            // document.querySelectorAll('.input-group input').forEach(input => input.value = '');
+        };
+        
+        // ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓ 新增的OTA相关代码放在这里 ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+        document.getElementById('otaFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if(file) {
+                document.getElementById('fileName').textContent = file.name;
+                document.getElementById('status').textContent = "已选择文件：" + file.name;
+                document.getElementById('otaProgress').style.display = 'block';
+            }
+        });
+
+        function startOTA() {
+            const file = document.getElementById('otaFile').files[0];
+            if(!file) {
+                showStatus("请选择固件文件", "error");
+                return;
+            }
+
+            // 生成唯一边界字符串（来自第二个页面关键代码）
+            const boundary = 'ESP32OTA-' + Date.now().toString(16);
+            const xhr = new XMLHttpRequest();
+            
+            // 初始化请求（来自第二个页面并改进）
+            xhr.open('POST', '/update', true);
+            xhr.setRequestHeader('Content-Type', `multipart/form-data; boundary=${boundary}`);
+
+            // 构造multipart数据体（改进版）
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const CRLF = '\r\n';
+                const bodyHeader = 
+                    `--${boundary}${CRLF}` +
+                    `Content-Disposition: form-data; name="firmware"; filename="${file.name}"${CRLF}` +
+                    `Content-Type: application/octet-stream${CRLF}${CRLF}`;
+                const bodyEnd = `${CRLF}--${boundary}--${CRLF}`;
+
+                // 合并二进制数据
+                const data = new Uint8Array([
+                    ...new TextEncoder().encode(bodyHeader),
+                    ...new Uint8Array(e.target.result),
+                    ...new TextEncoder().encode(bodyEnd)
+                ]);
+                
+                // 发送请求
+                xhr.send(data);
+            };
+            reader.readAsArrayBuffer(file);
+
+            // 进度事件处理（新增功能）
+            xhr.upload.onprogress = (event) => {
+                if (event.lengthComputable) {
+                    const percent = (event.loaded / event.total) * 100;
+                    document.getElementById('progressBar').style.width = percent + '%';
+                }
+            };
+
+            // 响应处理（改进版）
+            xhr.onload = () => {
+                if(xhr.status === 200) {
+                    showStatus("升级成功，设备即将重启...", "success");
+                    setTimeout(() => location.reload(), 2000);
+                } else {
+                    showStatus(`错误: ${xhr.status} - ${xhr.responseText}`, "error");
+                    resetProgress();
+                }
+            };
+
+            xhr.onerror = () => {
+                showStatus("网络错误，请检查连接", "error");
+                resetProgress();
+            };
+
+            // 初始化状态
+            showStatus("固件上传中...", "processing");
+            document.getElementById('otaProgress').style.display = 'block';
+        }
+
+        // 辅助函数：显示状态信息
+        function showStatus(message, type) {
+            const statusElem = document.getElementById('status');
+            statusElem.textContent = message;
+            statusElem.style.color = type === 'error' ? '#dc3545' : 
+                                   type === 'success' ? '#28a745' : '#666';
+        }
+
+        // 辅助函数：重置进度条
+        function resetProgress() {
+            document.getElementById('progressBar').style.width = '0%';
+            document.getElementById('otaProgress').style.display = 'none';
+        }
+        // ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑ 新增的OTA相关代码放在这里 ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑   
+    </script>
+</body>
+</html>
