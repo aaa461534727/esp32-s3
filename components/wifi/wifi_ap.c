@@ -1,4 +1,4 @@
-#include "wifi_ap.h"
+#include "wifi.h"
 
 #define EXAMPLE_ESP_WIFI_SSID      "ESP32_REMOTE_ID"
 #define EXAMPLE_ESP_WIFI_PASS      "QQQ123456789"

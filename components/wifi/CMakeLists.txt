@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "udp_clicent.c" "wifi_ap.c" "wifi.c" 
+    SRCS "udp_clicent.c" "wifi_ap.c" "wifi.c" "wifi_sniffer.c"
     INCLUDE_DIRS  "."
     REQUIRES    # 核心依赖
         libopendroneid

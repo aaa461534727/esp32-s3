@@ -20,7 +20,7 @@
 
 #include "gps.h"
 #include "opendroneid.h"
-#include "wifi_ap.h"
+#include "wifi.h"
 #include "ble_peripheral.h"
 #include "web_server.h"
 #include "power.h"
