@@ -26,6 +26,7 @@
 #include "power.h"
 #include "../components/mavlink/interface.h"
 #include "global.h"
+#include "ble.h"
 
 SemaphoreHandle_t gps_Mutex = NULL;
 
