@@ -17,7 +17,7 @@
 #include "sdkconfig.h"
 #include "global.h"
 #include "../libopendroneid/opendroneid.h"
-extern void wifi_sniffer_init(void);
-extern void udp_client_init(void); 
+#include "../udp/udp_client.h"
+
 void wifi_init(void);
 #endif

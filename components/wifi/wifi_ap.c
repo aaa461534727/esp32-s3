@@ -1,4 +1,4 @@
-#include "wifi.h"
+#include "wifi_ap.h"
 
 #define EXAMPLE_ESP_WIFI_SSID      "ESP32_REMOTE_ID"
 #define EXAMPLE_ESP_WIFI_PASS      "QQQ123456789"
@@ -304,23 +304,23 @@ void fill_example_data()
         // 8. 释放内存
         free(IE_data);
     }
-    
-    {
-        if ((length = odid_wifi_build_nan_sync_beacon_frame((char *)wifi_ap_mac,
-                    buffer,sizeof(buffer))) > 0) {
-            if (esp_wifi_80211_tx(WIFI_IF_AP,buffer,length,true) != ESP_OK) {
-                printf("Failed to set nan sync beacon frame\n");
-            }
-        }
 
-        if ((length = odid_wifi_build_message_pack_nan_action_frame(&uasData,(char *)wifi_ap_mac,
-                    ++send_counter_nan,
-                    buffer,sizeof(buffer))) > 0) {
-            if (esp_wifi_80211_tx(WIFI_IF_AP,buffer,length,true) != ESP_OK) {
-                printf("Failed to set nan action frame\n");
-            }
-        }
-    }
+    // {
+    //     if ((length = odid_wifi_build_nan_sync_beacon_frame((char *)wifi_ap_mac,
+    //                 buffer,sizeof(buffer))) > 0) {
+    //         if (esp_wifi_80211_tx(WIFI_IF_AP,buffer,length,true) != ESP_OK) {
+    //             printf("Failed to set nan sync beacon frame\n");
+    //         }
+    //     }
+
+    //     if ((length = odid_wifi_build_message_pack_nan_action_frame(&uasData,(char *)wifi_ap_mac,
+    //                 ++send_counter_nan,
+    //                 buffer,sizeof(buffer))) > 0) {
+    //         if (esp_wifi_80211_tx(WIFI_IF_AP,buffer,length,true) != ESP_OK) {
+    //             printf("Failed to set nan action frame\n");
+    //         }
+    //     }
+    // }
 }
 
 /* 在app_main函数前添加任务实现 */

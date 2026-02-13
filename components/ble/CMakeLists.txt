@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "ble_peripheral.c" "ble_sniffer.c"      # 确保路径正确（若在子目录需加相对路径）
+    SRCS "ble_sniffer.c" "ble_peripheral.c"      # 确保路径正确（若在子目录需加相对路径）
     INCLUDE_DIRS "."               # 包含当前目录的头文件
     REQUIRES 
     main

@@ -20,13 +20,18 @@
 
 #include "gps.h"
 #include "opendroneid.h"
-#include "wifi.h"
+#include "rid_wifi_sniffer.h"
+#include "ble.h"
 #include "ble_peripheral.h"
 #include "web_server.h"
 #include "power.h"
+#include "cpu_info.h"
+#include "ec200x.h"
+#include "udp_client.h"
+#include "iot.h"
+#include "cloudupdate.h"
 #include "../components/mavlink/interface.h"
 #include "global.h"
-#include "ble.h"
 
 SemaphoreHandle_t gps_Mutex = NULL;
 
@@ -35,22 +40,30 @@ void app_main(void)
     //Initialize NVS
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
+      ESP_ERROR_CHECK(nvs_flash_erase());
+      ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
     //创建gps互斥信号量
-    gps_Mutex = xSemaphoreCreateMutex();  // 创建互斥信号量
-    if (gps_Mutex != NULL) {
-        printf("Success to create mutex\n"); 
-    } else {
-        printf("Failed to create mutex\n");
-    }
+    // gps_Mutex = xSemaphoreCreateMutex();  // 创建互斥信号量
+    // if (gps_Mutex != NULL) {
+    //     printf("Success to create mutex\n"); 
+    // } else {
+    //     printf("Failed to create mutex\n");
+    // }
     //初始化外设
-    power_gpio_init();
-    wifi_init();
-    ble_init();
+    // power_gpio_init();
+    // wifi_init();
+    // ble_init();
+    // ble_sniffer_init();
+    
+    // gps_Interface_init();//GPS
+    // mavlink_Interface_init();//无人机协议
+    // cpu_info_init();
+    ec200x_init();
+    rid_wifi_sniffer_init();
+    udp_client_init();
+    iot_init();
+    // start_cloud_update();
     start_web_server();  // 启动Web服务器
-    gps_Interface_init();
-    mavlink_Interface_init();
 }

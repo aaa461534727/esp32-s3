@@ -11,6 +11,11 @@ set(EXTRA_COMPONENT_DIRS
     "./components/web"
     "./components/mavlink"
     "./components/power"
+    "./components/cpu_info"
+    "./components/4G"
+    "./components/udp"
+    "./components/iot"
+    "./components/cloudupdate"
 )
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(esp32-s3-remoteid)

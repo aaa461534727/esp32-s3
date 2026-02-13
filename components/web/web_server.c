@@ -414,10 +414,10 @@ void start_web_server(void)
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     // 启动httpd服务器
     if (httpd_start(&web_server_handle, &config) == ESP_OK) {
-        printf("web_server_start\r\n");
+        ESP_LOGI(TAG, "web_server_start\r\n");
     }
     else {
-        printf("Error starting ws server!");
+        ESP_LOGE(TAG, "Error starting ws server!");
     }
 
     esp_event_handler_instance_register(ESP_HTTP_SERVER_EVENT,ESP_EVENT_ANY_ID, &ws_event_handler,NULL,NULL);//注册处理程序
@@ -429,14 +429,14 @@ void start_web_server(void)
     ws_server_rece_queue = xQueueCreate(  3 , sizeof(DATA_PARCEL)); 
     if (ws_server_rece_queue == NULL )
     {
-        printf("ws_server_rece_queue ERROR\r\n");
+        ESP_LOGE(TAG, "ws_server_rece_queue ERROR\r\n");
     }
 
     /*创建发送队列*/
     ws_server_send_queue = xQueueCreate(  3 , sizeof(DATA_PARCEL)); 
     if (ws_server_send_queue == NULL )
     {
-        printf("ws_server_send_queue ERROR\r\n");
+        ESP_LOGE(TAG, "ws_server_send_queue ERROR\r\n");
     }
 
     BaseType_t xReturn ;
@@ -444,13 +444,13 @@ void start_web_server(void)
     xReturn = xTaskCreatePinnedToCore(ws_server_rece_task,"ws_server_rece_task",4096,NULL,15,NULL, tskNO_AFFINITY);
     if(xReturn != pdPASS) 
     {
-        printf("xTaskCreatePinnedToCore ws_server_rece_task error!\r\n");
+        ESP_LOGE(TAG, "xTaskCreatePinnedToCore ws_server_rece_task error!\r\n");
     }
     // /*创建发送任务，此任务不是必须的，因为发送函数可以放在任意地方*/
     // xReturn = xTaskCreatePinnedToCore(ws_server_send_task,"ws_server_send_task",4096,NULL,15,NULL, tskNO_AFFINITY);
     // if(xReturn != pdPASS) 
     // {
-    //     printf("xTaskCreatePinnedToCore ws_server_send_task error!\r\n");
+    //     ESP_LOGE(TAG, "xTaskCreatePinnedToCore ws_server_send_task error!\r\n");
     // }
 
 
