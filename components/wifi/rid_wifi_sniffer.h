@@ -22,9 +22,10 @@
 #include "rid_parse.h"
 #include "cJSON.h"
 
+int rid_wifi_sniffer_get_last_data(char *out_buf, size_t buf_size);
 void rid_wifi_sniffer_init(void);
 void free_rid_wifi_sniffer(void);
-#define RID_SN_LIST_FILE    "/etc/config/rid_sn_list"
+#define RID_SN_LIST_FILE    "/spiffs/rid_sn_list"
 #define PACKAGE_LENGTH		0x19 //每条报文长度固定值
 #define MAX_PAYLOAD 2048
 

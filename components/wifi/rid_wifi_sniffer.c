@@ -9,6 +9,7 @@ static SemaphoreHandle_t rid_mutex = NULL;  //FreeRTOS互斥量
 float loss_rate_value = 0.0f;
 int test_mode = 0;
 int max_rssi = -127;
+static char g_last_rid_data[DATA_BUF_LEN] = {0};  // 保存最后一次的无人机数据JSON
 // 定义无线链表头节点
 Node *wifi_head = NULL;
 // 定义设备信息变量并初始化
@@ -519,6 +520,9 @@ int prepare_udp_send(char *buf)
 
         data = cJSON_Print(root);
         snprintf(buf, DATA_BUF_LEN, "%s", data);
+        //将数据保存到全局缓冲区给iot
+        strncpy(g_last_rid_data, buf, DATA_BUF_LEN - 1);
+        g_last_rid_data[DATA_BUF_LEN - 1] = '\0';
 
         if (test_mode)
             printf("%s\r\n", buf);
@@ -538,6 +542,27 @@ end:
     }
 
     return data_exist;
+}
+
+int rid_wifi_sniffer_get_last_data(char *out_buf, size_t buf_size)
+{
+    if (!wifi_sniffer_initialized || rid_mutex == NULL) {
+        return -1;  // 未初始化
+    }
+    
+    if (xSemaphoreTake(rid_mutex, portMAX_DELAY) != pdTRUE) {
+        return -1;  // 无法获取互斥量
+    }
+    
+    size_t len = strnlen(g_last_rid_data, DATA_BUF_LEN);
+    if (len >= buf_size) {
+        len = buf_size - 1;  // 预留结尾'\0'
+    }
+    memcpy(out_buf, g_last_rid_data, len);
+    out_buf[len] = '\0';
+    
+    xSemaphoreGive(rid_mutex);
+    return len;
 }
 
 // WiFi信道配置（1-14）
@@ -629,7 +654,6 @@ static void send_rid_task(void* arg) {
                     ESP_LOGE(TAG, "send fail\n");
             }
         }
-        // printf("send_buf: %s\n", send_buf);
         if (send_buf) {
             free(send_buf);
             send_buf = NULL;
@@ -826,7 +850,7 @@ void free_rid_wifi_sniffer(void)
     // 5. 反初始化WiFi驱动
     ESP_ERROR_CHECK(esp_wifi_deinit());
 
-    // 6. 销毁之前创建的AP网络接口（重点！）
+    // 6. 销毁之前创建的AP网络接口
     if (s_ap_netif != NULL) {
         esp_netif_destroy(s_ap_netif);
         s_ap_netif = NULL;

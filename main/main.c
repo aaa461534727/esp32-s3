@@ -14,7 +14,7 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
-
+#include "esp_spiffs.h"
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
@@ -33,7 +33,27 @@
 #include "../components/mavlink/interface.h"
 #include "global.h"
 
+static const char *TAG = "main";
 SemaphoreHandle_t gps_Mutex = NULL;
+
+static void mount_spiffs(void) {
+    esp_vfs_spiffs_conf_t conf = {
+        .base_path = "/spiffs",
+        .partition_label = "storage",
+        .max_files = 5,
+        .format_if_mount_failed = true
+    };
+    esp_err_t ret = esp_vfs_spiffs_register(&conf);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to mount SPIFFS (%s)", esp_err_to_name(ret));
+        return;
+    }
+    size_t total = 0, used = 0;
+    ret = esp_spiffs_info(conf.partition_label, &total, &used);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "SPIFFS: total=%d, used=%d", total, used);
+    }
+}
 
 void app_main(void)
 {
@@ -44,6 +64,8 @@ void app_main(void)
       ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+    mount_spiffs();
+    
     //创建gps互斥信号量
     // gps_Mutex = xSemaphoreCreateMutex();  // 创建互斥信号量
     // if (gps_Mutex != NULL) {

@@ -166,6 +166,11 @@ static void mqtt_manager_task(void *pvParameters)
             xTaskCreate(sysinfo_task, "sysinfo_task", 1024 * 10,
                         NULL, 5, &sysinfo_task_handle);
         }
+        if (ridinfo_queue == NULL) {
+            ridinfo_queue = xQueueCreate(5, sizeof(uint32_t));
+            xTaskCreate(ridinfo_task, "ridinfo_task", 1024 * 10,
+                        NULL, 5, &ridinfo_task_handle);
+        }
 
         // ---------- 3. 启动 MQTT 客户端（内部连接）----------
         mqtt_start();   // 设置 g_client 并连接，成功后自动订阅、创建定时器等

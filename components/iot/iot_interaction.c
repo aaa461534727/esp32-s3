@@ -7,7 +7,10 @@ static const char *TAG = "iot-interaction";
 #endif
 
 QueueHandle_t sysinfo_queue = NULL;
+QueueHandle_t ridinfo_queue = NULL;
+
 TaskHandle_t sysinfo_task_handle = NULL;
+TaskHandle_t ridinfo_task_handle = NULL;
 
 //publish/subscribe 规则
 char subscribeTmp[128] = {0};
@@ -205,13 +208,58 @@ static void getSysInfo(void)
     cJSON_Delete(obj);
 }
 
+void getRidData(void) 
+{   
+    char buffer[2048] = {0};
+    char mac[64] = {0};
+    getDeviceMac(mac, sizeof(mac));
+
+    cJSON *obj = cJSON_CreateObject();
+    cJSON_AddStringToObject(obj, "action", "getRidData");
+    cJSON_AddStringToObject(obj, "mac", mac);
+
+    int len = rid_wifi_sniffer_get_last_data(buffer, sizeof(buffer));
+    if (len > 0) {
+        // 尝试将 buffer 解析为 JSON 对象
+        cJSON *data_obj = cJSON_Parse(buffer);
+        if (data_obj != NULL) {
+            // 解析成功，将 data_obj 作为嵌套对象添加到 obj
+            cJSON_AddItemToObject(obj, "data", data_obj);
+        } else {
+            // 解析失败，添加空字符串
+            cJSON_AddStringToObject(obj, "data", "");
+        }
+    } else {
+        cJSON_AddStringToObject(obj, "data", "");
+    }
+
+    char *json_str = cJSON_PrintUnformatted(obj);
+    if (json_str) {
+        // 发布数据到 MQTT
+        mqtt_publish_text(g_client, publishTmp, json_str, 2, 0);
+        // 可选：打印日志
+        // ESP_LOGI(TAG, "Published getRidData: %s", json_str);
+        cJSON_free(json_str);
+    } else {
+        ESP_LOGE(TAG, "Failed to create JSON string in getRidData");
+    }
+
+    // 释放 JSON 对象
+    cJSON_Delete(obj);
+}
+
 void timer_callback(TimerHandle_t xTimer) {
     // 关键：若队列已被删除或 MQTT 客户端已销毁，直接返回
-    if (sysinfo_queue == NULL || g_client == NULL) {
+    if (sysinfo_queue == NULL || g_client == NULL || ridinfo_queue == NULL) {
         return;
     }
     static uint32_t count = 0;
     count++;
+
+    if (count % 1 == 0) {
+        uint32_t ridval = 1;
+        xQueueSend(ridinfo_queue, &ridval, 0);   // 0 表示不等待
+    }
 
     if (count % 5 == 0) {
         // 发送一个空信号唤醒工作任务
@@ -219,15 +267,22 @@ void timer_callback(TimerHandle_t xTimer) {
         xQueueSend(sysinfo_queue, &val, 0);   // 0 表示不等待
     }
 
-    if (count % 10 == 0) {
-        ESP_LOGI(TAG, "Performing a task every 10 seconds.");
-    }
+
 }
 void sysinfo_task(void *pvParameters) {
     while (1) {
         uint32_t dummy;  // 仅作为唤醒信号
         if (xQueueReceive(sysinfo_queue, &dummy, portMAX_DELAY)) {
             getSysInfo();   // 耗时操作在专用任务中执行，栈大小可单独配置
+        }
+    }
+}
+
+void ridinfo_task(void *pvParameters) {
+    while (1) {
+        uint32_t dummy;  // 仅作为唤醒信号
+        if (xQueueReceive(ridinfo_queue, &dummy, portMAX_DELAY)) {
+            getRidData();
         }
     }
 }

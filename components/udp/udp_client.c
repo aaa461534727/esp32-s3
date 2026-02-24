@@ -4,7 +4,7 @@
 #define TAG "UDP_CLIENT"
 
 #define UDP_SERVER_IP        "112.125.89.8"
-#define UDP_SERVER_PORT      33510
+#define UDP_SERVER_PORT      32500
 
 #define UDP_HEARTBEAT_PERIOD_MS   (10 * 1000)
 

@@ -368,11 +368,11 @@ static bool ppp_start_and_dial(void)
     uart_flush(UART_PORT_NUM);
 
     if (!send_at_cmd("AT", 800)) return false;
-    send_at_cmd("ATE0", 500);
-    send_at_cmd("AT+CPIN?", 800);
-    send_at_cmd("AT+CREG?", 800);
-    send_at_cmd("AT+CGREG?", 800);
-    send_at_cmd("AT+CSQ", 800);
+    if (!send_at_cmd("ATE0", 500)) return false;
+    if (!send_at_cmd("AT+CPIN?", 800)) return false;
+    if (!send_at_cmd("AT+CREG?", 800)) return false;
+    if (!send_at_cmd("AT+CGREG?", 800)) return false;
+    if (!send_at_cmd("AT+CSQ", 800)) return false;
 
     char cgdcont[128];
     snprintf(cgdcont, sizeof(cgdcont), "AT+CGDCONT=1,\"IP\",\"%s\"", APN_STRING);
@@ -519,6 +519,8 @@ static void ppp_keepalive_task(void *arg)
 {
     (void)arg;
     bool connected = false;
+    int consecutive_failures = 0;   // 新增：连续失败次数
+    const int MAX_FAILURES_BEFORE_RESET = 3;
 
     while (1) {
         // ----- 1. 未连接：持续重拨（固定5秒间隔）-----
@@ -526,11 +528,22 @@ static void ppp_keepalive_task(void *arg)
             ESP_LOGI(TAG, "Attempting PPP dial-up...");
             if (ppp_start_and_dial()) {
                 connected = true;
+                consecutive_failures = 0;   // 成功后清零
                 ESP_LOGI(TAG, "PPP connection established");
                 break;
             }
-            ESP_LOGW(TAG, "PPP dial failed, retry after 5s");
-            vTaskDelay(pdMS_TO_TICKS(5000));
+            consecutive_failures++;
+            ESP_LOGW(TAG, "PPP dial failed, consecutive failures = %d", consecutive_failures);
+
+            if (consecutive_failures >= MAX_FAILURES_BEFORE_RESET) {
+                ESP_LOGE(TAG, "Too many dial failures, performing hardware reset");
+                //modem_power_cycle();                // 硬件复位
+                consecutive_failures = 0;           // 复位后计数清零
+                // 注意：复位后可能需要等待模块完全就绪（modem_power_cycle 已包含等待）
+            } else {
+                ESP_LOGW(TAG, "Retry after 5s");
+                vTaskDelay(pdMS_TO_TICKS(5000));
+            }
         }
 
         // ----- 2. 已连接：保活 + 监控断线 -----

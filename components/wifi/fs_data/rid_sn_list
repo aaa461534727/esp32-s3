@@ -1,0 +1,59 @@
+{
+    "groups": {
+        "DJI": {
+            "consumer": {
+                "1581F6N8": "DJI Air 3",              
+                "1581F895": "DJI Air 3S",
+                "1581F987": "DJI Air 3S Car",                
+                "1581F6CD": "DJI Mini 2 SE",
+                "1581F5YH": "DJI Mini 3",               
+                "1581F6Z9": "DJI Mini 4 Pro",
+                "1581F8PJ": "DJI Mini 4K", 
+                "1581F6W8": "DJI Avata 2",              
+                "1581F5FH": "DJI Mavic 3E",
+                "1581F5FJ": "DJI Mavic 3T",
+                "1581F67Q": "DJI Mavic 3 Pro",
+                "1581F8LQ": "DJI Mavic 4 Pro",
+                "1581F67P": "DJI Mavic 3 Classic",               
+                "1581F986": "DJI Mavic 4 Pro 512GB",
+                "1581F4BN": "DJI JW M30",
+                "1581F5BK": "DJI JW M30T",
+                "1581F5BM": "DJI JW M30T Airport",               
+                "1581F6Q8": "DJI Matrice 3TD",
+                "1581F8HG": "DJI Matrice 4TD",
+                "1581F7C6": "DJI FlyCart 30",
+                "1581F7V2": "DJI Flip",
+                "1581F87L": "DJI Neo",
+                "1581FA6Q": "DJI Neo 2"
+            },
+            "Industrial":{
+                "1581Atest": "DJI AAAATest"
+            }
+        },
+        "MEITN":{
+            "consumer": {
+                "METNFP4000": "METN"
+            }
+        },
+        "Autel":{
+            "consumer": {
+                "1748CHL7": "Autel",
+                "1748FEV3": "Autel"
+            }
+        },
+        "GUD":{
+            "consumer": {
+                "GDU9PZ": "GUD"
+            }
+        },
+        "Test": {
+            "consumer": {
+                "ABCDEFGH": "esp32 test",
+                "22222222222222222222": "IP04433 2g test",
+                "55555555555555555555": "IP04433 5g test",
+                "12345678901234567890": "esp32-s3",
+                "2051FEABPT0000000135": "yibo test"
+            }
+        }
+    }
+}
