@@ -1,49 +1,547 @@
-<div id="dataDisplay">
-    <p>接收数据：<input type="text" id="receivedData" readonly style="width:400px;"></p>
+<!-- display.html 模块 -->
+<style>
+    .display-module {
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    }
+    .display-module .container {
+        max-width: 1200px;
+        width: 100%;
+    }
+    .display-module h1 {
+        font-size: 1.8rem;
+        color: #1e293b;
+        margin-top: 0.2rem;
+        margin-bottom: 1rem;
+        border-left: 6px solid #2563eb;
+        padding-left: 1rem;
+    }
+    .display-module .controls {
+        background: white;
+        padding: 16px 24px;
+        border-radius: 20px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 24px;
+        align-items: center;
+        margin-bottom: 24px;
+        backdrop-filter: blur(2px);
+        border: 1px solid rgba(255,255,255,0.5);
+    }
+    .display-module .btn-refresh {
+        background: #2563eb;
+        color: white;
+        border: none;
+        padding: 10px 24px;
+        border-radius: 40px;
+        font-size: 1rem;
+        font-weight: 500;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.2s;
+        box-shadow: 0 4px 8px rgba(37,99,235,0.3);
+        border: 1px solid rgba(255,255,255,0.3);
+    }
+    .display-module .btn-refresh:hover {
+        background: #1d4ed8;
+        transform: translateY(-2px);
+        box-shadow: 0 8px 16px rgba(37,99,235,0.4);
+    }
+    .display-module .btn-refresh:active {
+        transform: translateY(0);
+    }
+    .display-module .auto-label {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 1rem;
+        color: #334155;
+        cursor: pointer;
+        background: #f1f5f9;
+        padding: 6px 16px;
+        border-radius: 40px;
+    }
+    .display-module .auto-label input {
+        width: 18px;
+        height: 18px;
+        accent-color: #2563eb;
+        margin: 0;
+    }
+    .display-module .update-time {
+        margin-left: auto;
+        color: #64748b;
+        font-size: 0.9rem;
+        background: #f8fafc;
+        padding: 6px 16px;
+        border-radius: 40px;
+        border: 1px solid #e2e8f0;
+    }
+    .display-module .device-card {
+        background: linear-gradient(145deg, #ffffff, #f9fbfe);
+        border-radius: 28px;
+        padding: 24px;
+        margin-bottom: 28px;
+        box-shadow: 0 12px 24px -8px rgba(0,34,68,0.1);
+        border: 1px solid rgba(255,255,255,0.8);
+        backdrop-filter: blur(4px);
+    }
+    .display-module .device-title {
+        font-size: 1.4rem;
+        font-weight: 600;
+        color: #0f172a;
+        margin-top: 0;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border-bottom: 2px dashed #cbd5e1;
+        padding-bottom: 12px;
+    }
+    .display-module .device-title span {
+        background: #2563eb15;
+        padding: 6px 16px;
+        border-radius: 40px;
+        font-size: 0.9rem;
+        color: #2563eb;
+        font-weight: 400;
+    }
+    .display-module .fields-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); /* 增加最小宽度，容纳长ID */
+        gap: 16px 24px;
+    }
+    .display-module .field-item {
+        display: flex;
+        align-items: baseline;
+        background: #f8fafc;
+        padding: 8px 16px;
+        border-radius: 16px;
+        border: 1px solid #e9eef3;
+        transition: 0.1s;
+    }
+    .display-module .field-item:hover {
+        background: #eef2f6;
+        border-color: #b9c7da;
+    }
+    .display-module .field-label {
+        font-weight: 600;
+        color: #334155;
+        min-width: 100px;
+        font-size: 0.9rem;
+        text-transform: capitalize;
+        letter-spacing: 0.3px;
+    }
+    .display-module .field-value {
+        color: #0f172a;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 0.95rem;
+        word-break: break-word;
+        margin-left: 12px;
+        font-weight: 500;
+    }
+    /* 长字段（如ID）不换行，不显示滚动条 */
+    .display-module .field-value-long {
+        white-space: nowrap;
+        overflow: visible;
+    }
+    .display-module .field-value.null-value {
+        color: #94a3b8;
+        font-style: italic;
+    }
+    .display-module .drones-section {
+        margin-top: 20px;
+    }
+    .display-module .drones-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+        gap: 24px;
+    }
+    .display-module .drone-card {
+        background: white;
+        border-radius: 28px;
+        padding: 20px;
+        box-shadow: 0 10px 20px -10px rgba(0,20,40,0.12);
+        border: 1px solid #eef2f6;
+        transition: transform 0.15s;
+        display: flex;
+        flex-direction: column;
+    }
+    .display-module .drone-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 20px 28px -12px #1e293b30;
+    }
+    .display-module .drone-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 18px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #e2e8f0;
+        font-weight: 600;
+        color: #1e293b;
+        font-size: 1.1rem;
+    }
+    .display-module .drone-index {
+        background: #2563eb;
+        color: white;
+        width: 30px;
+        height: 30px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 30px;
+        font-size: 0.9rem;
+        font-weight: 600;
+    }
+    .display-module .drone-model {
+        background: #dbeafe;
+        color: #1e40af;
+        padding: 4px 12px;
+        border-radius: 40px;
+        font-size: 0.85rem;
+        margin-left: auto;
+        font-weight: 400;
+    }
+    .display-module .drone-fields {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .display-module .drone-field-row {
+        display: flex;
+        align-items: baseline;
+        padding: 5px 8px;
+        background: #f9f9fc;
+        border-radius: 14px;
+        font-size: 0.9rem;
+    }
+    .display-module .drone-field-label {
+        min-width: 110px;
+        font-weight: 600;
+        color: #475569;
+    }
+    .display-module .drone-field-value {
+        color: #0f172a;
+        font-family: monospace;
+        word-break: break-word;
+        margin-left: 30px;
+        line-height: 1.5;                  /* 增加行高，改善多行文本间距 */
+    }
+    .display-module .empty-state {
+        text-align: center;
+        padding: 48px 24px;
+        background: white;
+        border-radius: 48px;
+        color: #64748b;
+        font-size: 1.2rem;
+        border: 2px dashed #cbd5e1;
+    }
+    .display-module .error-state {
+        background: #fee2e2;
+        border: 1px solid #f87171;
+        color: #b91c1c;
+        padding: 20px;
+        border-radius: 40px;
+        text-align: center;
+    }
+    .display-module .footer-note {
+        text-align: right;
+        color: #94a3b8;
+        font-size: 0.8rem;
+        margin-top: 16px;
+    }
+</style>
+
+<div class="display-module">
+    <div class="container">
+        <h1>✈️ 无人机探测数据</h1>
+
+        <div class="controls">
+            <button class="btn-refresh" id="refreshBtn">
+                <span style="font-size:1.2rem;">↻</span> 获取最新数据
+            </button>
+            <label class="auto-label">
+                <input type="checkbox" id="autoRefreshCheckbox"> 自动刷新 (每5秒)
+            </label>
+            <div class="update-time" id="updateTimeLabel">未更新</div>
+        </div>
+
+        <!-- 数据显示容器 -->
+        <div id="dataContainer">
+            <div class="empty-state">点击「获取最新数据」开始显示</div>
+        </div>
+        <div class="footer-note">* 字段中文标注，空值显示为「—」</div>
+    </div>
 </div>
 
 <script>
-    (function() {
-        // 模块作用域变量，防止污染全局
-        let timer = null;
-        const inputElement = document.getElementById('receivedData');
+(function() {
+    // ----- 字段中文映射 (标注) -----
+    const FIELD_MAP = {
+        // 公共 / 设备字段
+        'max_rssi': '最大信号强度',
+        'listen_type': '监听类型',
+        'status': '状态',
+        'id': '标识符',
+        // 无人机专用字段
+        'selfid': '运行描述报文内容',
+        'selfid_type': '运行描述报文类型',
+        'model': '型号',
+        'sn': '序列号',
+        'rssi': '信号强度',
+        'channel': '信道',
+        'distance': '距离(m)',
+        'air_high': '飞行高度(m)',
+        'high_type': '高度类型',
+        'geo_high': '地理高度',
+        'g_high': '对地高度',
+        'speed': '水平速度(m/s)',
+        'v_speed': '垂直速度(m/s)',
+        'direction': '航向(°)',
+        'lat': '纬度',
+        'lon': '经度',
+        'alt': '海拔(m)',
+        'operator_id': '操作员ID',
+        'operator_id_type': '操作员ID类型',
+        'operator_altitude': '操作员海拔',
+        'ua_type': '无人机类型',
+        'authtype': '自定义报文类型',
+        'authentication_data': '自定义报文内容',
+        'timestamp': '时间戳',
+        'channel_busy_time': '信道占用时间',
+        'ilotLon': '操作员经度',
+        'ilotLat': '操作员纬度',
+        'time_acc': '时间精度',
+        // 设备状态
+        'status': '状态',
+        // 额外的字段以防遗漏
+        'id': 'ID',
+        'basic_id': '基础ID',
+        'custom_desc': '自定义描述',
+        'run_desc': '运行描述',
+        'operator_info': '操作员信息',
+    };
 
-        // 定时获取数据的函数
-        function fetchData() {
-            fetch('/data')
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('HTTP error ' + response.status);
-                    }
-                    return response.text();
-                })
-                .then(data => {
-                    if (inputElement) {
-                        inputElement.value = data;
-                    }
-                })
-                .catch(err => {
-                    console.error('获取数据失败:', err);
-                    if (inputElement) {
-                        inputElement.value = '获取失败';
-                    }
-                });
+    // 通用字段值格式化 (可扩展)
+    function formatValue(val) {
+        if (val === undefined || val === null) return '—';
+        if (typeof val === 'boolean') return val ? '是' : '否';
+        if (typeof val === 'number') return val;
+        if (typeof val === 'string' && val.trim() === '') return '—';
+        return val;
+    }
+
+    // 获取中文标签
+    function getLabel(key) {
+        return FIELD_MAP[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    }
+
+    // 渲染设备信息 (单个对象)，特殊处理 listen_type 和 status
+    function renderDeviceObject(deviceData, title) {
+        if (!deviceData || typeof deviceData !== 'object' || Object.keys(deviceData).length === 0) {
+            return `<div class="device-card">${title} <span>无数据</span></div>`;
         }
 
-        // 启动定时器（每1秒请求一次）
-        timer = setInterval(fetchData, 1000);
+        let fieldsHtml = '';
+        for (const [key, value] of Object.entries(deviceData)) {
+            let displayValue;
+            const label = getLabel(key);
+            
+            // 特殊字段处理
+            if (key === 'listen_type') {
+                if (value === 0) displayValue = '无线WiFi';
+                else if (value === 1) displayValue = '蓝牙BLE';
+                else displayValue = formatValue(value);
+            } else if (key === 'status') {
+                if (value === true) displayValue = '开启';
+                else if (value === false) displayValue = '关闭';
+                else displayValue = formatValue(value);
+            } else {
+                displayValue = formatValue(value);
+            }
 
-        // 立即执行一次
+            // 为 id 字段添加特殊类，使其不换行
+            const valueClass = (key === 'id') ? 'field-value field-value-long' : 'field-value';
+
+            fieldsHtml += `
+                <div class="field-item">
+                    <span class="field-label">${label}</span>
+                    <span class="${valueClass} ${displayValue === '—' ? 'null-value' : ''}">${displayValue}</span>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="device-card">
+                <div class="device-title">
+                    📡 ${title}
+                    <span>接收端</span>
+                </div>
+                <div class="fields-grid">
+                    ${fieldsHtml}
+                </div>
+            </div>
+        `;
+    }
+
+    // 渲染无人机数组（移除了 selfid 显示）
+    function renderDronesArray(drones) {
+        if (!Array.isArray(drones) || drones.length === 0) {
+            return '<div class="empty-state" style="margin-top:20px;">🚁 没有探测到无人机</div>';
+        }
+
+        let dronesHtml = '';
+        drones.forEach((drone, idx) => {
+            // 提取关键信息用于头部显示 (型号)
+            const model = drone.model || '未知型号';
+            
+            let fieldsRows = '';
+            // 遍历所有字段
+            for (const [key, value] of Object.entries(drone)) {
+                const label = getLabel(key);
+                const displayValue = formatValue(value);
+                fieldsRows += `
+                    <div class="drone-field-row">
+                        <span class="drone-field-label">${label}</span>
+                        <span class="drone-field-value ${displayValue === '—' ? 'null-value' : ''}">${displayValue}</span>
+                    </div>
+                `;
+            }
+
+            dronesHtml += `
+                <div class="drone-card">
+                    <div class="drone-header">
+                        <span class="drone-index">${idx+1}</span>
+                        <span class="drone-model" style="margin-left:0;">${model}</span>
+                    </div>
+                    <div class="drone-fields">
+                        ${fieldsRows}
+                    </div>
+                </div>
+            `;
+        });
+
+        return `<div class="drones-grid">${dronesHtml}</div>`;
+    }
+
+    // ----- 核心获取&渲染逻辑 -----
+    const dataContainer = document.getElementById('dataContainer');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const autoCheck = document.getElementById('autoRefreshCheckbox');
+    const updateTimeLabel = document.getElementById('updateTimeLabel');
+
+    let autoTimer = null;
+    let lastFetchTime = null;
+
+    // 清除旧定时器 (使用全局标识防止多个实例)
+    if (window._displayModuleTimer) {
+        clearInterval(window._displayModuleTimer);
+        window._displayModuleTimer = null;
+    }
+
+    // 清除当前模块的定时器
+    function clearAutoTimer() {
+        if (autoTimer) {
+            clearInterval(autoTimer);
+            autoTimer = null;
+        }
+    }
+
+    // 启动自动刷新 (如果复选框选中)
+    function startAutoRefreshIfNeeded() {
+        clearAutoTimer(); // 总是先清除
+        if (autoCheck.checked) {
+            autoTimer = setInterval(() => {
+                fetchData();
+            }, 5000); // 5秒
+            window._displayModuleTimer = autoTimer; // 记录到全局以便切换时清理
+        } else {
+            window._displayModuleTimer = null;
+        }
+    }
+
+    // 更新页面时间显示
+    function updateTimestamp() {
+        if (lastFetchTime) {
+            const date = new Date(lastFetchTime);
+            updateTimeLabel.textContent = `最后更新: ${date.toLocaleTimeString()}.${date.getMilliseconds()}`;
+        } else {
+            updateTimeLabel.textContent = '未更新';
+        }
+    }
+
+    // 渲染数据到容器
+    function renderData(jsonData) {
+        if (!jsonData || typeof jsonData !== 'object') {
+            dataContainer.innerHTML = `<div class="error-state">❌ 无效的数据格式</div>`;
+            return;
+        }
+
+        let html = '';
+
+        // 1. 渲染 devices 部分 (如果存在)
+        if (jsonData.devices) {
+            html += renderDeviceObject(jsonData.devices, '接收设备信息');
+        } else {
+            html += `<div class="device-card">📡 接收设备信息 <span>字段缺失</span></div>`;
+        }
+
+        // 2. 渲染 drones 部分
+        html += `<div class="drones-section"><h2 style="margin: 12px 0 12px 8px; font-size:1.3rem;">🛸 无人机列表 (${Array.isArray(jsonData.drones) ? jsonData.drones.length : 0})</h2>`;
+        html += renderDronesArray(jsonData.drones);
+        html += `</div>`;
+
+        dataContainer.innerHTML = html;
+    }
+
+    // 获取数据
+    function fetchData() {
+        fetch('/data')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return response.text(); // 先用文本，尝试解析JSON
+            })
+            .then(text => {
+                // 尝试解析JSON
+                let parsed;
+                try {
+                    parsed = JSON.parse(text);
+                } catch (e) {
+                    // 如果解析失败，显示原始文本但给出提示
+                    dataContainer.innerHTML = `<div class="error-state">❌ 返回数据不是有效的JSON: <pre style="background:#1e293b;color:#ddd;padding:12px;border-radius:16px;overflow:auto;">${text.substring(0,200)}${text.length>200?'...':''}</pre></div>`;
+                    return;
+                }
+                lastFetchTime = Date.now();
+                updateTimestamp();
+                renderData(parsed);
+            })
+            .catch(err => {
+                console.error('获取失败:', err);
+                dataContainer.innerHTML = `<div class="error-state">❌ 获取数据失败: ${err.message}</div>`;
+                lastFetchTime = null;
+                updateTimestamp();
+            });
+    }
+
+    // 事件绑定
+    refreshBtn.addEventListener('click', () => {
         fetchData();
+    });
 
-        // 模块卸载时清除定时器（当通过 loadPage 切换页面时，此脚本会被重新执行，
-        // 但旧的定时器仍存在，所以需要清理。利用 beforeunload 或返回清理函数不可行，
-        // 因为模块是动态插入的。这里采用一个技巧：在全局记录当前定时器，并在重新加载时清除。
-        // 或者更简单：在每次执行本脚本时，先清除可能遗留的定时器。
-        // 我们使用一个全局变量来存储上一个模块的定时器ID。
-        if (window._recTimer) {
-            clearInterval(window._recTimer);
-        }
-        window._recTimer = timer;
-    })();
+    autoCheck.addEventListener('change', () => {
+        startAutoRefreshIfNeeded();
+    });
+
+    // 页面卸载或模块被替换时清理定时器（通过全局标识）
+    window.addEventListener('beforeunload', function() {
+        clearAutoTimer();
+    });
+
+    // 自动获取最新数据（进入模块即显示）
+    fetchData(); // 立即执行一次数据获取
+})();
 </script>

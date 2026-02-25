@@ -255,8 +255,12 @@ static esp_err_t display_get_handler(httpd_req_t *req)
 /* 处理 /data 的 GET 请求，返回最新接收的数据 */
 static esp_err_t data_get_handler(httpd_req_t *req)
 {
-    httpd_resp_set_type(req, "text/plain");
-    httpd_resp_sendstr(req, "121345678");
+    char buffer[2048] = {0};
+    int len = rid_wifi_sniffer_get_last_data(buffer, sizeof(buffer));
+    if (len > 0) {
+        httpd_resp_set_type(req, "text/plain");
+        httpd_resp_sendstr(req, buffer);
+    }
     return ESP_OK;
 }
 
@@ -489,6 +493,7 @@ static void ws_server_rece_task(void *p)
 void start_web_server(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.stack_size = 8192;  // 增加至 8KB
     // 启动httpd服务器
     if (httpd_start(&web_server_handle, &config) == ESP_OK) {
         ESP_LOGI(TAG, "web_server_start\r\n");
@@ -524,7 +529,7 @@ void start_web_server(void)
 
     BaseType_t xReturn ;
     /*创建接收处理任务*///改创建任务的函数可以执行CPU核心0、1，当前参数不指定
-    xReturn = xTaskCreatePinnedToCore(ws_server_rece_task,"ws_server_rece_task",4096,NULL,15,NULL, tskNO_AFFINITY);
+    xReturn = xTaskCreatePinnedToCore(ws_server_rece_task,"ws_server_rece_task",10*1024,NULL,15,NULL, tskNO_AFFINITY);
     if(xReturn != pdPASS) 
     {
         ESP_LOGE(TAG, "xTaskCreatePinnedToCore ws_server_rece_task error!\r\n");

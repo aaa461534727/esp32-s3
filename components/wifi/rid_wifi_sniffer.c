@@ -28,6 +28,16 @@ struct device_Info device_Info = {
     .device_id = {0}
 };
 
+// 获取当前设备的 MAC 地址
+static void getDeviceMac(char *mac_str, size_t len)
+{
+    uint8_t mac[6] = {0};
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+
+    snprintf(mac_str, len, "%02x:%02x:%02x:%02x:%02x:%02x", 
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+}
+
 // 创建链表节点
 Node *createNode(rid_info_t data)
 {
@@ -844,7 +854,8 @@ void rid_wifi_sniffer_init(void)
     // };
     // ESP_ERROR_CHECK(esp_timer_create(&timer_args, &s_count_timer));
     // ESP_ERROR_CHECK(esp_timer_start_periodic(s_count_timer, 1000000)); // 1000000微秒 = 1秒
-
+    
+    getDeviceMac(device_Info.device_id, sizeof(device_Info.device_id));
     // 12. 标记初始化完成
     wifi_sniffer_initialized = true;
 }
