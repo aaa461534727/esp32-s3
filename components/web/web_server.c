@@ -16,6 +16,13 @@
 static const char *TAG = "web_server";
 static esp_ota_handle_t ota_handle = 0;
 
+static bool s_ota_in_progress = false;   // OTA正在进行则为true
+// 查询当前OTA是否正在进行（非阻塞）
+bool is_ota_in_progress(void)
+{
+    return s_ota_in_progress;
+}
+
 /* 单个文件的最大大小*/
 #define MAX_FILE_SIZE   (1000*1024) // 1000 KB
 #define MAX_FILE_SIZE_STR "1000KB"
@@ -140,6 +147,9 @@ uint8_t Upload_Timeout_num;
 /* OTA文件上传处理 */
 static esp_err_t upload_post_handler(httpd_req_t *req) 
 {
+    free_iot_init();
+    udp_client_free();
+    s_ota_in_progress = true;
     esp_ota_handle_t ota_handle = 0;
     char *buffer = malloc(2048); // 增大缓冲区至2KB
     int received, content_length = req->content_len;
@@ -212,14 +222,51 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-/*首页HTML GET处理程序 */
+/*首页HTML GET处理程序（对应新的 home.html，需嵌入为 index.html） */
 static esp_err_t home_get_handler(httpd_req_t *req)
 {
-	/*获取脚本index.html的存放地址和大小，接受http请求时将脚本发出去*/
-    extern const unsigned char upload_script_start[] asm("_binary_index_html_start");
-    extern const unsigned char upload_script_end[]   asm("_binary_index_html_end");
-    const size_t upload_script_size = (upload_script_end - upload_script_start);
-    httpd_resp_send(req, (const char *)upload_script_start, upload_script_size);
+    /*获取脚本index.html的存放地址和大小，接受http请求时将脚本发出去*/
+    extern const unsigned char home_html_start[] asm("_binary_home_html_start");
+    extern const unsigned char home_html_end[]   asm("_binary_home_html_end");
+    const size_t size = (home_html_end - home_html_start);
+    httpd_resp_send(req, (const char *)home_html_start, size);
+    return ESP_OK;
+}
+
+/* 新增：manage.html GET处理程序 */
+static esp_err_t manage_get_handler(httpd_req_t *req)
+{
+    extern const unsigned char manage_html_start[] asm("_binary_manage_html_start");
+    extern const unsigned char manage_html_end[]   asm("_binary_manage_html_end");
+    const size_t size = (manage_html_end - manage_html_start);
+    httpd_resp_send(req, (const char *)manage_html_start, size);
+    return ESP_OK;
+}
+
+/* 新增：display.html GET处理程序 */
+static esp_err_t display_get_handler(httpd_req_t *req)
+{
+    extern const unsigned char display_html_start[] asm("_binary_display_html_start");
+    extern const unsigned char display_html_end[]   asm("_binary_display_html_end");
+    const size_t size = (display_html_end - display_html_start);
+    httpd_resp_send(req, (const char *)display_html_start, size);
+    return ESP_OK;
+}
+/* 处理 /data 的 GET 请求，返回最新接收的数据 */
+static esp_err_t data_get_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "text/plain");
+    httpd_resp_sendstr(req, "121345678");
+    return ESP_OK;
+}
+
+/* 新增：ota.html GET处理程序 */
+static esp_err_t ota_get_handler(httpd_req_t *req)
+{
+    extern const unsigned char ota_html_start[] asm("_binary_ota_html_start");
+    extern const unsigned char ota_html_end[]   asm("_binary_ota_html_end");
+    const size_t size = (ota_html_end - ota_html_start);
+    httpd_resp_send(req, (const char *)ota_html_start, size);
     return ESP_OK;
 }
 
@@ -229,7 +276,6 @@ static esp_err_t favicon_handler(httpd_req_t *req) {
     httpd_resp_send(req, NULL, 0); // 返回空图标
     return ESP_OK;
 }
-
 
 /*WEB SOCKET*/
 static const httpd_uri_t ws = {
@@ -251,6 +297,38 @@ static const httpd_uri_t home = {
     .uri       = "/",
     .method    = HTTP_GET,
     .handler   = home_get_handler,
+    .user_ctx  = NULL
+};
+
+/* 新增：manage.html 路由 */
+static const httpd_uri_t manage = {
+    .uri       = "/manage.html",
+    .method    = HTTP_GET,
+    .handler   = manage_get_handler,
+    .user_ctx  = NULL
+};
+
+/* 新增：display.html 路由 */
+static const httpd_uri_t display = {
+    .uri       = "/display.html",
+    .method    = HTTP_GET,
+    .handler   = display_get_handler,
+    .user_ctx  = NULL
+};
+
+/* 新增：ota.html 路由 */
+static const httpd_uri_t ota = {
+    .uri       = "/ota.html",
+    .method    = HTTP_GET,
+    .handler   = ota_get_handler,
+    .user_ctx  = NULL
+};
+
+/* 新增：数据获取接口 */
+static const httpd_uri_t data_get = {
+    .uri       = "/data",
+    .method    = HTTP_GET,
+    .handler   = data_get_handler,
     .user_ctx  = NULL
 };
 
@@ -407,7 +485,6 @@ static void ws_server_rece_task(void *p)
 
 }
 
-
 /*web服务器初始化*/
 void start_web_server(void)
 {
@@ -425,6 +502,12 @@ void start_web_server(void)
     httpd_register_uri_handler(web_server_handle, &ws);//注册接收数据处理程序
     httpd_register_uri_handler(web_server_handle, &upload);//注册ota更新处理程序
     httpd_register_uri_handler(web_server_handle, &icon);//注册图标处理程序
+    /* 新增：注册模块页面处理程序 */
+    httpd_register_uri_handler(web_server_handle, &manage);
+    httpd_register_uri_handler(web_server_handle, &display);
+    httpd_register_uri_handler(web_server_handle, &ota);
+    httpd_register_uri_handler(web_server_handle, &data_get);
+
     /*创建接收队列*/
     ws_server_rece_queue = xQueueCreate(  3 , sizeof(DATA_PARCEL)); 
     if (ws_server_rece_queue == NULL )
@@ -452,8 +535,4 @@ void start_web_server(void)
     // {
     //     ESP_LOGE(TAG, "xTaskCreatePinnedToCore ws_server_send_task error!\r\n");
     // }
-
-
 }
-
-

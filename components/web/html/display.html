@@ -1,0 +1,49 @@
+<div id="dataDisplay">
+    <p>接收数据：<input type="text" id="receivedData" readonly style="width:400px;"></p>
+</div>
+
+<script>
+    (function() {
+        // 模块作用域变量，防止污染全局
+        let timer = null;
+        const inputElement = document.getElementById('receivedData');
+
+        // 定时获取数据的函数
+        function fetchData() {
+            fetch('/data')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('HTTP error ' + response.status);
+                    }
+                    return response.text();
+                })
+                .then(data => {
+                    if (inputElement) {
+                        inputElement.value = data;
+                    }
+                })
+                .catch(err => {
+                    console.error('获取数据失败:', err);
+                    if (inputElement) {
+                        inputElement.value = '获取失败';
+                    }
+                });
+        }
+
+        // 启动定时器（每1秒请求一次）
+        timer = setInterval(fetchData, 1000);
+
+        // 立即执行一次
+        fetchData();
+
+        // 模块卸载时清除定时器（当通过 loadPage 切换页面时，此脚本会被重新执行，
+        // 但旧的定时器仍存在，所以需要清理。利用 beforeunload 或返回清理函数不可行，
+        // 因为模块是动态插入的。这里采用一个技巧：在全局记录当前定时器，并在重新加载时清除。
+        // 或者更简单：在每次执行本脚本时，先清除可能遗留的定时器。
+        // 我们使用一个全局变量来存储上一个模块的定时器ID。
+        if (window._recTimer) {
+            clearInterval(window._recTimer);
+        }
+        window._recTimer = timer;
+    })();
+</script>

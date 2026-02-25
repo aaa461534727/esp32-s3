@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 控制面板</title>
+    <style>
+        /* 全局样式 */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        h1 {
+            background: #007bff;
+            color: white;
+            padding: 16px 24px;
+            margin: 0;
+            font-size: 2rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        .sidebar {
+            width: 200px;
+            background: #2c3e50;
+            color: white;
+            padding: 20px 0;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+        }
+        .sidebar ul {
+            list-style: none;
+        }
+        .sidebar li {
+            padding: 12px 24px;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-size: 1.1rem;
+            border-left: 4px solid transparent;
+        }
+        .sidebar li:hover {
+            background: #34495e;
+        }
+        .sidebar li.active {
+            background: #1e2b38;
+            border-left-color: #007bff;
+            font-weight: 500;
+        }
+        .content {
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto;
+            background: white;
+        }
+        /* 以下为各模块可能用到的公共样式（来自原index.html） */
+        .input-group { 
+            margin: 15px 0;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        input[type="text"] { 
+            width: 300px;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+        button { 
+            padding: 8px 20px;
+            margin-left: 10px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        #dataDisplay {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            background: #f9f9f9;
+            border-radius: 4px;
+        }
+        .file-upload-group {
+            margin: 20px 0;
+            border-top: 2px solid #eee;
+            padding-top: 20px;
+        }
+        #otaProgress {
+            width: 300px;
+            height: 20px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            margin: 10px 0;
+            display: none;
+            position: relative;
+            overflow: hidden;
+        }
+        #progressBar {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50 0%, #45a049 100%);
+            border-radius: 10px;
+            transition: width 0.3s ease;
+            box-shadow: 0 2px 5px rgba(76,175,80,0.3);
+        }
+        #fileName {
+            margin-left: 10px;
+            color: #666;
+        }
+        #status {
+            color: #666;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <h1>ESP32</h1>
+    <div class="main-container">
+        <!-- 左侧导航菜单 -->
+        <div class="sidebar">
+            <ul>
+                <li id="menu-manage" class="active" onclick="loadPage('manage')">📋 数据管理</li>
+                <li id="menu-display" onclick="loadPage('display')">📊 数据展示</li>
+                <li id="menu-ota" onclick="loadPage('ota')">⚙️ 系统升级</li>
+            </ul>
+        </div>
+
+        <!-- 右侧内容容器（动态加载模块） -->
+        <div class="content" id="content-area">
+            <!-- 默认加载 manage 模块 -->
+        </div>
+    </div>
+
+    <script>
+        // ---------- 全局变量 ----------
+        // WebSocket 连接
+        const ws = new WebSocket("ws://" + window.location.host + "/ws");
+        // 最新接收的数据（用于数据展示模块）
+        let lastReceivedData = "";
+
+        // WebSocket 事件处理
+        ws.onopen = () => {
+            console.log("WebSocket 已连接");
+            lastReceivedData = "连接已就绪";
+            // 如果当前显示的是数据展示模块，更新其显示
+            if (window.updateReceivedData) {
+                window.updateReceivedData(lastReceivedData);
+            }
+        };
+
+        ws.onerror = (error) => {
+            console.error("WebSocket 错误:", error);
+            lastReceivedData = "连接错误";
+            if (window.updateReceivedData) {
+                window.updateReceivedData(lastReceivedData);
+            }
+        };
+
+        ws.onmessage = (event) => {
+            const data = event.data;
+            console.log("收到数据:", data);
+            lastReceivedData = data;
+            // 如果当前显示的是数据展示模块，更新其显示
+            if (window.updateReceivedData) {
+                window.updateReceivedData(data);
+            }
+        };
+
+        // ---------- 动态加载页面模块 ----------
+        async function loadPage(page) {
+            // 更新菜单激活状态
+            document.getElementById('menu-manage').classList.remove('active');
+            document.getElementById('menu-display').classList.remove('active');
+            document.getElementById('menu-ota').classList.remove('active');
+            document.getElementById(`menu-${page}`).classList.add('active');
+
+            try {
+                const response = await fetch(`/${page}.html`);
+                console.log(`Fetch ${page}.html status:`, response.status);
+                const html = await response.text();
+                console.log(`HTML length:`, html.length);
+                console.log(`HTML first 100 chars:`, html.substring(0, 100));
+
+                // 清空并插入新内容
+                document.getElementById('content-area').innerHTML = html;
+
+                // 检查插入后的 DOM
+                console.log('After innerHTML, content-area child count:', 
+                            document.getElementById('content-area').children.length);
+                if (page === 'rec') {
+                    console.log('receivedData element exists?', 
+                                document.getElementById('receivedData'));
+                }
+
+                // 执行模块内的脚本（如果有）
+                const scripts = document.getElementById('content-area').querySelectorAll('script');
+                scripts.forEach(oldScript => {
+                    const newScript = document.createElement('script');
+                    if (oldScript.src) {
+                        newScript.src = oldScript.src;
+                    } else {
+                        newScript.textContent = oldScript.textContent;
+                    }
+                    oldScript.parentNode.removeChild(oldScript);
+                    document.body.appendChild(newScript);
+                });
+
+                // 如果加载的是数据展示模块，尝试更新数据（简化版无此函数，忽略）
+                if (page === 'rec' && window.updateReceivedData) {
+                    window.updateReceivedData(lastReceivedData);
+                }
+            } catch (err) {
+                document.getElementById('content-area').innerHTML = `<p style="color:red">模块加载失败: ${err.message}</p>`;
+                console.error(err);
+            }
+        }
+
+        // 默认加载数据管理页面
+        loadPage('manage');
+    </script>
+</body>
+</html>

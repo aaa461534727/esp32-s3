@@ -1,0 +1,58 @@
+<div class="input-group">
+    <input type="text" id="inputBasicId" placeholder="基本ID（最大21字符）">
+    <button onclick="sendBasicId()">修改基本ID</button>
+</div>
+
+<div class="input-group">
+    <input type="text" id="inputCustomDesc" placeholder="自定义描述（最大18字符）">
+    <button onclick="sendCustomDesc()">修改自定义报文</button>
+</div>
+
+<div class="input-group">
+    <input type="text" id="inputRunDesc" placeholder="运行描述（最大23字符）">
+    <button onclick="sendRunDesc()">修改运行描述报文</button>
+</div>
+
+<div class="input-group">
+    <input type="text" id="inputOperator" placeholder="操作人（最大20字符）">
+    <button onclick="sendOperator()">修改操作人报文</button>
+</div>
+
+<script>
+    // 数据管理模块的发送函数
+    function validateInput(value, maxLength, fieldName) {
+        if (value.length > maxLength) {
+            alert(`${fieldName}超过最大长度（${maxLength}字符）`);
+            return false;
+        }
+        return true;
+    }
+
+    function sendBasicId() {
+        const data = document.getElementById("inputBasicId").value;
+        if (validateInput(data, 21, "基本ID")) {
+            ws.send(`BASIC_ID:${data}`);
+        }
+    }
+
+    function sendCustomDesc() {
+        const data = document.getElementById("inputCustomDesc").value;
+        if (validateInput(data, 18, "自定义描述")) {
+            ws.send(`CUSTOM_DESC:${data}`);
+        }
+    }
+
+    function sendRunDesc() {
+        const data = document.getElementById("inputRunDesc").value;
+        if (validateInput(data, 23, "运行描述")) {
+            ws.send(`RUN_DESC:${data}`);
+        }
+    }
+
+    function sendOperator() {
+        const data = document.getElementById("inputOperator").value;
+        if (validateInput(data, 20, "操作人描述")) {
+            ws.send(`OPERATOR:${data}`);
+        }
+    }
+</script>

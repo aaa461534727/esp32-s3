@@ -1,0 +1,95 @@
+<div class="file-upload-group">
+    <h3>系统升级</h3>
+    <input type="file" id="otaFile" accept=".bin" style="display:none;" onchange="handleFileSelect(event)">
+    <button onclick="document.getElementById('otaFile').click()">选择固件文件</button>
+    <span id="fileName" style="margin-left:10px;color:#666"></span>
+    <!-- 进度条容器 -->
+    <div id="otaProgress">
+        <div id="progressBar"></div>
+    </div>
+    <button onclick="startOTA()" style="margin-top:10px">开始固件升级</button>
+    <!-- 状态提示 -->
+    <div id="status" style="color:#666;margin-top:8px;"></div>
+</div>
+
+<script>
+    // 系统升级模块的函数
+    function handleFileSelect(event) {
+        const file = event.target.files[0];
+        if(file) {
+            document.getElementById('fileName').textContent = file.name;
+            document.getElementById('status').textContent = "已选择文件：" + file.name;
+            document.getElementById('otaProgress').style.display = 'block';
+        }
+    }
+
+    function startOTA() {
+        const file = document.getElementById('otaFile').files[0];
+        if(!file) {
+            showStatus("请选择固件文件", "error");
+            return;
+        }
+
+        const boundary = 'ESP32OTA-' + Date.now().toString(16);
+        const xhr = new XMLHttpRequest();
+        
+        xhr.open('POST', '/update', true);
+        xhr.setRequestHeader('Content-Type', `multipart/form-data; boundary=${boundary}`);
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const CRLF = '\r\n';
+            const bodyHeader = 
+                `--${boundary}${CRLF}` +
+                `Content-Disposition: form-data; name="firmware"; filename="${file.name}"${CRLF}` +
+                `Content-Type: application/octet-stream${CRLF}${CRLF}`;
+            const bodyEnd = `${CRLF}--${boundary}--${CRLF}`;
+
+            const data = new Uint8Array([
+                ...new TextEncoder().encode(bodyHeader),
+                ...new Uint8Array(e.target.result),
+                ...new TextEncoder().encode(bodyEnd)
+            ]);
+            
+            xhr.send(data);
+        };
+        reader.readAsArrayBuffer(file);
+
+        xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+                const percent = (event.loaded / event.total) * 100;
+                document.getElementById('progressBar').style.width = percent + '%';
+            }
+        };
+
+        xhr.onload = () => {
+            if(xhr.status === 200) {
+                showStatus("升级成功，设备即将重启...", "success");
+                setTimeout(() => location.reload(), 2000);
+            } else {
+                showStatus(`错误: ${xhr.status} - ${xhr.responseText}`, "error");
+                resetProgress();
+            }
+        };
+
+        xhr.onerror = () => {
+            showStatus("网络错误，请检查连接", "error");
+            resetProgress();
+        };
+
+        showStatus("固件上传中...", "processing");
+        document.getElementById('otaProgress').style.display = 'block';
+    }
+
+    function showStatus(message, type) {
+        const statusElem = document.getElementById('status');
+        statusElem.textContent = message;
+        statusElem.style.color = type === 'error' ? '#dc3545' : 
+                               type === 'success' ? '#28a745' : '#666';
+    }
+
+    function resetProgress() {
+        document.getElementById('progressBar').style.width = '0%';
+        document.getElementById('otaProgress').style.display = 'none';
+    }
+</script>
