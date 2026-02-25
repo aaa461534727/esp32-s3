@@ -260,7 +260,7 @@ static void on_ip_event(void *arg, esp_event_base_t base, int32_t id, void *data
         s_network_connected = true;
         rid_wifi_sniffer_init();
         iot_init();
-        udp_client_init();
+        // udp_client_init();
     } else if (id == IP_EVENT_PPP_LOST_IP) {
         ESP_LOGW(TAG, "PPP LOST IP");
         xEventGroupClearBits(s_evt, EVT_PPP_GOT_IP);
@@ -333,7 +333,7 @@ static void ppp_stop_and_cleanup(void)
 {   
     free_rid_wifi_sniffer();
     free_iot_init();
-    udp_client_free();
+    // udp_client_free();
     if (s_ppp_netif) {
         // 1. 发起停止命令
         esp_netif_action_stop(s_ppp_netif, NULL, 0, NULL);

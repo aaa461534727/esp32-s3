@@ -9,6 +9,7 @@ idf_component_register(
         esp_wifi       # 核心依赖
         driver         # 底层驱动（esp_wifi可能依赖）
         esp_netif      # 网络接口（部分WiFi功能需要
+        web
 )
 
 # 创建 SPIFFS 分区镜像，将 fs_data 目录下的文件打包到 storage 分区

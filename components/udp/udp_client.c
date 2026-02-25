@@ -3,8 +3,8 @@
 // ===================== 配置 =====================
 #define TAG "UDP_CLIENT"
 
-#define UDP_SERVER_IP        "112.125.89.8"
-#define UDP_SERVER_PORT      32500
+#define UDP_SERVER_IP        "192.168.4.2"//"112.125.89.8"
+#define UDP_SERVER_PORT      8080
 
 #define UDP_HEARTBEAT_PERIOD_MS   (10 * 1000)
 
@@ -31,10 +31,10 @@ typedef struct {
 // 其他任务调用这个函数，把数据排队发往 UDP 服务器
 bool udp_client_send(const void *data, size_t len, TickType_t wait_ticks)
 {
-   // 没网直接失败，不排队
-    if (!ec200x_is_network_connected()) {
-        return false;
-    }
+//    // 没网直接失败，不排队
+//     if (!ec200x_is_network_connected()) {
+//         return false;
+//     }
 
     // 检查参数
     if (!s_tx_queue || !data || len == 0) {
@@ -117,14 +117,14 @@ static void udp_task(void *arg)
     (void)arg;
 
     while (1) {
-        // ---------- 1. 阻塞等待网络（永不超时）----------
-        ESP_LOGI(TAG, "Waiting for network...");
-        // ec200x_wait_for_network(portMAX_DELAY);
-        while(!ec200x_is_network_connected())
-        {
-            vTaskDelay(pdMS_TO_TICKS(1000));
-        }
-        ESP_LOGI(TAG, "Network is up, creating UDP socket...");
+        // // ---------- 1. 阻塞等待网络（永不超时）----------
+        // ESP_LOGI(TAG, "Waiting for network...");
+        // // ec200x_wait_for_network(portMAX_DELAY);
+        // while(!ec200x_is_network_connected())
+        // {
+        //     vTaskDelay(pdMS_TO_TICKS(1000));
+        // }
+        // ESP_LOGI(TAG, "Network is up, creating UDP socket...");
 
         // ---------- 2. 创建并连接 UDP socket ----------
         int sock = udp_socket_connect();
@@ -135,7 +135,6 @@ static void udp_task(void *arg)
         }
 
         TickType_t last_hb = xTaskGetTickCount();
-        TickType_t last_dat = xTaskGetTickCount();
 
         // ---------- 3. 网络监控循环（每 5 秒检查一次）----------
         while (1) {
@@ -168,17 +167,17 @@ static void udp_task(void *arg)
                 last_hb = now;
             }
 
-            // 定期检查网络状态（5秒一次）
-            static TickType_t last_net_check = 0;
-            if ((now - last_net_check) * portTICK_PERIOD_MS >= 5000) {
-                last_net_check = now;
-                if (!ec200x_is_network_connected()) {
-                    ESP_LOGW(TAG, "Network disconnected, cleanup and wait...");
-                    close(sock);
-                    sock = -1;
-                    break;      // 退出内循环，重新等待网络
-                }
-            }
+            // // 定期检查网络状态（5秒一次）
+            // static TickType_t last_net_check = 0;
+            // if ((now - last_net_check) * portTICK_PERIOD_MS >= 5000) {
+            //     last_net_check = now;
+            //     if (!ec200x_is_network_connected()) {
+            //         ESP_LOGW(TAG, "Network disconnected, cleanup and wait...");
+            //         close(sock);
+            //         sock = -1;
+            //         break;      // 退出内循环，重新等待网络
+            //     }
+            // }
 
             vTaskDelay(pdMS_TO_TICKS(20));
         }
@@ -201,7 +200,7 @@ void udp_client_init(void)
     }
 
     if (!s_udp_task) {
-        xTaskCreate(udp_task, "udp_task", 1024 * 30, NULL, 8, &s_udp_task);
+        xTaskCreate(udp_task, "udp_task", 1024 * 10, NULL, 8, &s_udp_task);
     }
 
     s_udp_inited = true;

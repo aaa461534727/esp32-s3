@@ -10,6 +10,10 @@ float loss_rate_value = 0.0f;
 int test_mode = 0;
 int max_rssi = -127;
 static char g_last_rid_data[DATA_BUF_LEN] = {0};  // 保存最后一次的无人机数据JSON
+static volatile uint32_t s_mgmt_frame_count = 0;          // 管理帧计数器
+static portMUX_TYPE s_count_mutex = portMUX_INITIALIZER_UNLOCKED;  // 保护计数器的自旋锁
+static esp_timer_handle_t s_count_timer = NULL;           // 定时器句柄
+
 // 定义无线链表头节点
 Node *wifi_head = NULL;
 // 定义设备信息变量并初始化
@@ -649,7 +653,7 @@ static void send_rid_task(void* arg) {
         }
         if (prepare_udp_send(send_buf)) {
             // 有网络才发送
-            if (ec200x_is_network_connected()) {
+            if (ec200x_is_network_connected() && !is_ota_in_progress()) {
                 if (udp_client_send(send_buf, strlen(send_buf),pdMS_TO_TICKS(100)) != 1)
                     ESP_LOGE(TAG, "send fail\n");
             }
@@ -677,6 +681,11 @@ static void wifi_sniffer_packet_handler(void* buf, wifi_promiscuous_pkt_type_t t
     if (hdr->fc.type != WIFI_FRAME_MGMT) {
         return;
     }
+
+    // 增加管理帧计数器
+    // portENTER_CRITICAL(&s_count_mutex);
+    // s_mgmt_frame_count++;
+    // portEXIT_CRITICAL(&s_count_mutex);
 
     // 检查是否为需要处理的帧类型
     if (hdr->fc.subtype != WIFI_FRAME_SUBTYPE_BEACON && hdr->fc.subtype != 0x0D) {
@@ -756,6 +765,16 @@ static void channel_switch_task(void* arg) {
     }
 }
 
+static void mgmt_frame_count_timer_cb(void* arg) {
+    uint32_t count;
+    // 读取当前计数并清零
+    portENTER_CRITICAL(&s_count_mutex);
+    count = s_mgmt_frame_count;
+    s_mgmt_frame_count = 0;
+    portEXIT_CRITICAL(&s_count_mutex);
+    
+    ESP_LOGI(TAG, "Management frames received in last second: %ld \r\n", count);
+}
 
 void rid_wifi_sniffer_init(void) 
 {
@@ -816,6 +835,15 @@ void rid_wifi_sniffer_init(void)
 
     // 11. 创建数据发送任务
     xTaskCreate(send_rid_task, "send_rid", 8192, NULL, 5, &send_rid_task_handle);
+
+    // // 创建并启动每秒统计定时器
+    // esp_timer_create_args_t timer_args = {
+    //     .callback = mgmt_frame_count_timer_cb,
+    //     .arg = NULL,
+    //     .name = "mgmt_count_timer"
+    // };
+    // ESP_ERROR_CHECK(esp_timer_create(&timer_args, &s_count_timer));
+    // ESP_ERROR_CHECK(esp_timer_start_periodic(s_count_timer, 1000000)); // 1000000微秒 = 1秒
 
     // 12. 标记初始化完成
     wifi_sniffer_initialized = true;
