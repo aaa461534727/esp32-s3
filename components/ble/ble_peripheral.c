@@ -930,7 +930,7 @@
 //             printf("%02X ", service_BasicID_data[i]);
 //         }
 //     #endif
-//     esp_ble_gap_ext_adv_stop(1,&ext_adv[2]);
+//     esp_ble_gap_ext_adv_stop(1, (uint8_t[]){2});
 //     // config adv data
 //     esp_err_t ret = esp_ble_gap_config_ext_adv_data_raw(2, sizeof(service_BasicID_data), &service_BasicID_data[0]);
 //     //esp_err_t ret = esp_ble_gap_config_adv_data(&adv_BasicID_data); // 更新数据
@@ -986,7 +986,7 @@
 //             printf("%02X ", service_Location_data[i]);
 //         }
 //     #endif
-//     esp_ble_gap_ext_adv_stop(1,&ext_adv[2]);  // 停止当前广播
+//     esp_ble_gap_ext_adv_stop(1, (uint8_t[]){2});  // 停止当前广播
 //     // config adv data
 //     esp_err_t ret = esp_ble_gap_config_ext_adv_data_raw(2, sizeof(service_Location_data), &service_Location_data[0]);
 //     //esp_err_t ret = esp_ble_gap_config_adv_data(&adv_Location_data);
@@ -1325,6 +1325,8 @@
 
 
 #include "ble_peripheral.h"
+#include "rid_parse_gb.h"
+#include "rid_parse.h"
 
 #define LOG_TAG "BLE_ADV"
 
@@ -1551,7 +1553,7 @@ static void fill_BasicID_encoded(void)
         }
     #endif
     esp_err_t ret;
-    ret = esp_ble_gap_ext_adv_stop(1,&ext_adv[2]);  // 停止当前广播
+    ret = esp_ble_gap_ext_adv_stop(1, (uint8_t[]){2});  // 停止当前广播
     if (ret) {
         printf("stop adv data failed, error code = %x", ret);
     }
@@ -1615,7 +1617,7 @@ static void fill_Location_encoded(void)
         }
     #endif
     esp_err_t ret;
-    ret = esp_ble_gap_ext_adv_stop(1,&ext_adv[2]);  // 停止当前广播
+    ret = esp_ble_gap_ext_adv_stop(1, (uint8_t[]){2});  // 停止当前广播
     if (ret) {
         printf("stop adv data failed, error code = %x", ret);
     }
@@ -1664,7 +1666,7 @@ static void fill_AuthData0_encoded(void)
         }
     #endif
     esp_err_t ret;
-    ret = esp_ble_gap_ext_adv_stop(1,&ext_adv[2]);  // 停止当前广播
+    ret = esp_ble_gap_ext_adv_stop(1, (uint8_t[]){2});  // 停止当前广播
     if (ret) {
         printf("stop adv data failed, error code = %x", ret);
     }
@@ -1710,7 +1712,7 @@ static void fill_AuthData1_encoded(void)
         }
     #endif
     esp_err_t ret;
-    ret = esp_ble_gap_ext_adv_stop(1,&ext_adv[2]);  // 停止当前广播
+    ret = esp_ble_gap_ext_adv_stop(1, (uint8_t[]){2});  // 停止当前广播
     if (ret) {
         printf("stop adv data failed, error code = %x", ret);
     }
@@ -1755,7 +1757,7 @@ static void fill_SelfID_encoded(void)
         }
     #endif
     esp_err_t ret;
-    ret = esp_ble_gap_ext_adv_stop(1,&ext_adv[2]);  // 停止当前广播
+    ret = esp_ble_gap_ext_adv_stop(1, (uint8_t[]){2});  // 停止当前广播
     if (ret) {
         printf("stop adv data failed, error code = %x", ret);
     }
@@ -1809,7 +1811,7 @@ static void fill_System_encoded(void)
         }
     #endif
     esp_err_t ret;
-    ret = esp_ble_gap_ext_adv_stop(1,&ext_adv[2]);  // 停止当前广播
+    ret = esp_ble_gap_ext_adv_stop(1, (uint8_t[]){2});  // 停止当前广播
     if (ret) {
         printf("stop adv data failed, error code = %x", ret);
     }
@@ -1854,7 +1856,7 @@ static void fill_OperatorID_encoded(void)
         }
     #endif
     esp_err_t ret;
-    ret = esp_ble_gap_ext_adv_stop(1,&ext_adv[2]);  // 停止当前广播
+    ret = esp_ble_gap_ext_adv_stop(1, (uint8_t[]){2});  // 停止当前广播
     if (ret) {
         printf("stop adv data failed, error code = %x", ret);
     }
@@ -1989,13 +1991,72 @@ static void fill_example_data(void)
         }
     #endif
 
-    FUNC_SEND_WAIT_SEM(esp_ble_gap_ext_adv_stop(1,&ext_adv[3]),set_sem);  // 停止当前广播
+    FUNC_SEND_WAIT_SEM(esp_ble_gap_ext_adv_stop(1, (uint8_t[]){3}),set_sem);  // 停止当前广播
     // config adv data
     FUNC_SEND_WAIT_SEM(esp_ble_gap_config_ext_adv_data_raw(3, service_REMOTEID_data[0]+1, &service_REMOTEID_data[0]),set_sem);
     FUNC_SEND_WAIT_SEM(esp_ble_gap_ext_adv_start(1,&ext_adv[3]),set_sem);  // 重启广播     
 }
+/* 新国标 BLE 广播 */
+static void fill_gb_ble_adv(void)
+{
+    struct rid_info gb;
+    memset(&gb, 0, sizeof(gb));
+    if (xSemaphoreTake(gps_Mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        gb.lat = gpsData.latitude;
+        gb.lon = gpsData.longitude;
+        gb.speed = gpsData.speed;
+        gb.ilot_lat_gb = gpsData.latitude;
+        gb.ilot_lon_gb = gpsData.longitude;
+        xSemaphoreGive(gps_Mutex);
+    } else {
+        gb.lat = Location.Latitude;
+        gb.lon = Location.Longitude;
+        gb.speed = Location.SpeedHorizontal;
+    }
+    gb.status = 2;
+    gb.direction = Location.Direction;
+    gb.alt = Location.AltitudeBaro;
+    gb.geo_high = Location.AltitudeGeo;
+    gb.v_speed = Location.SpeedVertical;
+    gb.ilot_height = 10.0f;
+    gb.gb_category = 1;
+    gb.gb_class = 0;
+    gb.hor_accuracy = 2;
+    gb.ver_accuracy = 2;
+    gb.speed_accuracy = 2;
+    strncpy(gb.reg_id, "12345678", 8);
+    strncpy(gb.upi, "1986EXD30260602AHT12", 20);
+
+    uint8_t gb_tlv[256];
+    int tlv_len = rid_gb_encode(gb_tlv, sizeof(gb_tlv), &gb);
+    if (tlv_len <= 0) return;
+
+    uint8_t adv_data[256];
+    int adv_idx = 0;
+    adv_data[adv_idx++] = 2;
+    adv_data[adv_idx++] = 0x01;
+    adv_data[adv_idx++] = 0x06;
+    adv_data[adv_idx++] = tlv_len + 5;
+    adv_data[adv_idx++] = 0xFF;
+    adv_data[adv_idx++] = 0x35;
+    adv_data[adv_idx++] = 0x5C;
+    adv_data[adv_idx++] = 0x6A;
+    adv_data[adv_idx++] = 0x01;
+    adv_data[adv_idx++] = 0x0D;
+    memcpy(adv_data + adv_idx, gb_tlv, tlv_len);
+    adv_idx += tlv_len;
+
+    esp_err_t ret;
+    ret = esp_ble_gap_ext_adv_stop(1, (uint8_t[]){2});
+    if (ret == ESP_OK) {
+        ret = esp_ble_gap_config_ext_adv_data_raw(2, adv_idx, adv_data);
+        if (ret == ESP_OK) {
+            esp_ble_gap_ext_adv_start(1, &ext_adv[2]);
+        }
+    }
+}
+
 uint8_t ble_enable;
-/* 在app_main函数前添加任务实现 */
 static void ble_adv_task(void *pvParameters)
 {
     static int count = 0;
@@ -2030,6 +2091,11 @@ static void ble_adv_task(void *pvParameters)
             else if(count == 7)
             {
                 fill_OperatorID_encoded();
+            }
+            else if(count == 8)
+            {
+                /* 新国标 GB 46750-2025 BLE 广播 */
+                fill_gb_ble_adv();
                 count = 0;
             }     
         }
@@ -2050,7 +2116,7 @@ static void ble_ext_adv_task(void *pvParameters)
     }
 }
 
-int ble_init(void)
+int ble_send_init(void)
 {    
     esp_err_t ret;
     ESP_ERROR_CHECK(esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT));
@@ -2120,7 +2186,7 @@ int ble_init(void)
     FUNC_SEND_WAIT_SEM(esp_ble_gap_config_ext_scan_rsp_data_raw(3, sizeof(raw_scan_rsp_data_coded), &raw_scan_rsp_data_coded[0]), set_sem);
 
     // start all adv
-    FUNC_SEND_WAIT_SEM(esp_ble_gap_ext_adv_start(2, &ext_adv[2]), set_sem);
+    FUNC_SEND_WAIT_SEM(esp_ble_gap_ext_adv_start(1, &ext_adv[2]), set_sem);
 
     ble_enable = 1;
     BaseType_t xReturn;
@@ -2136,4 +2202,3 @@ int ble_init(void)
     }
     return 1;
 }
-

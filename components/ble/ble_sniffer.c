@@ -109,7 +109,7 @@ static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
 }
 
 // 初始化BLE控制器
-void ble_init(void)
+static void ble_init(void)
 {
     // 初始化蓝牙控制器
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();

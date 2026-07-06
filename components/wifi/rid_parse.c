@@ -153,7 +153,7 @@ int rid_parse_system_info(unsigned char *data, int offset, struct rid_info *info
 
     // 时间戳：4 byte
     timestamp = (data[offset] << 0) | (data[offset + 1] << 8) | (data[offset + 2] << 16) | (data[offset + 3] << 24);
-    struct tm *utc_time = gmtime(&timestamp); // 转换为UTC时间
+    struct tm utc_time_buf; time_t ts1 = (time_t)timestamp; gmtime_r(&ts1, &utc_time_buf); struct tm *utc_time = &utc_time_buf;
     sprintf(info->sys_timestamp, "%d-%02d-%02d %02d:%02d:%02d", utc_time->tm_year + 1900,
             utc_time->tm_mon + 1,
             utc_time->tm_mday,
@@ -505,7 +505,7 @@ int rid_parse_reserve(unsigned char *data, int offset, struct rid_info *info)
                 (unsigned long)data[offset+3];
     // 转换时间戳为可读格式
     time_t ts = (time_t)timestamp;
-    struct tm *utc_time = gmtime(&ts);
+    struct tm utc_time_buf2; gmtime_r(&ts, &utc_time_buf2); struct tm *utc_time = &utc_time_buf2;
     sprintf(info->aut_timestamp, "%d-%02d-%02d %02d:%02d:%02d",
             utc_time->tm_year + 1900,
             utc_time->tm_mon + 1,

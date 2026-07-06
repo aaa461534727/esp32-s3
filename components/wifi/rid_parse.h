@@ -78,6 +78,25 @@ typedef struct rid_info {
     char ble_mac[24]; // 蓝牙mac
     int msg_type;     // 消息类型
 
+    /* === GB 46750-2025 新国标字段 === */
+    char upi[21];
+    char reg_id[9];
+    int gb_category;
+    int gb_class;
+    int ilot_loc_type;
+    float ilot_lon_gb;
+    float ilot_lat_gb;
+    float ilot_height;
+    float ua_lon_gb;
+    float ua_lat_gb;
+    int coord_system;
+    unsigned long long unix_ts_ms;
+    unsigned int ts_accuracy;
+    unsigned int bitmap_b0;
+    unsigned int bitmap_b1;
+    unsigned int bitmap_b2;
+    int protocol_type;
+
 	// wifi
 	int8_t rssi; //wifi rssi
     int channel;

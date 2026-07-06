@@ -19,5 +19,5 @@
 #include "../libopendroneid/opendroneid.h"
 #include "../udp/udp_client.h"
 
-void wifi_init(void);
+void wifi_send_init(void);
 #endif

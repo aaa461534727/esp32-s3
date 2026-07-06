@@ -20,5 +20,5 @@
 #include "global.h"
 #include "../libopendroneid/opendroneid.h"
 
-int ble_init(void);
+int ble_send_init(void);
 #endif
