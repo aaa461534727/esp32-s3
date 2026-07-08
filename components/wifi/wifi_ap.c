@@ -335,8 +335,8 @@ static void fill_gb_beacon(void)
     gb.speed_accuracy = 2;
     gb.unix_ts_ms = 0;
     gb.ts_accuracy = 0;
-    strncpy(gb.upi, "1986EXD30260602AHT12", 20);
-    strncpy(gb.reg_id, "12345678", 8);
+    strncpy(gb.upi, "123456BLE501236AHT33", 20);
+    strncpy(gb.reg_id, "WIFI2.4G", 8);
 
     uint8_t gb_tlv[256];
     int tlv_len = rid_gb_encode(gb_tlv, sizeof(gb_tlv), &gb);

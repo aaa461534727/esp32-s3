@@ -557,7 +557,7 @@ static void fill_gb_data(void)
     memset(&gb_info, 0, sizeof(gb_info));
 
     /* Field 001: UPI — 20 字节 ASCII */
-    strcpy(gb_info.upi, "123456BLE50123AHT33");
+    strcpy(gb_info.upi, "123456BLE501236AHT33");
     /* Field 002: reg_id — 8 字节 ASCII */
     strcpy(gb_info.reg_id, "BLE12345");
     /* Field 003: 无人机类别 */

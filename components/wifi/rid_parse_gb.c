@@ -84,7 +84,7 @@ int rid_gb_encode(unsigned char *buf, int buf_len, struct rid_info *info)
     /* Field 001: UPI (20 B ASCII, big-endian = 直接拷贝) */
     if (bmp[0] & 0x80) {
         const char *s = info->upi[0] ? info->upi :
-                        info->sn[0] ? info->sn : "1986EXD30260602AHT12";
+                        info->sn[0] ? info->sn : "123456BLE501236AHT33";
         int n = strlen(s);
         for (int i = 0; i < 20; i++)
             buf[idx + i] = (i < n) ? s[i] : ' ';
