@@ -79,7 +79,6 @@ void app_main(void)
     wifi_send_init();
     ble_send_init();
     // ble_sniffer_init();
-    
     // gps_Interface_init();//GPS
     // mavlink_Interface_init();//无人机协议
     // cpu_info_init();
