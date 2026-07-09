@@ -12,255 +12,333 @@
 
 static const char *TAG = "BLE_SNIFFER";
 
-// 存储捕获的数据包
+/* 存储捕获的数据包 */
 typedef struct {
-    uint8_t data[ESP_BLE_ADV_DATA_LEN_MAX + ESP_BLE_SCAN_RSP_DATA_LEN_MAX];
+    uint8_t data[512];
     uint16_t length;
     int8_t rssi;
     uint32_t timestamp;
-    esp_ble_evt_type_t evt_type;
+    uint8_t primary_phy;        /* 1=1M, 2=2M, 3=CODED */
+    uint8_t secondary_phy;
+    uint8_t sid;
+    uint8_t adv_addr[6];
 } ble_packet_t;
 
-// 数据包队列
 QueueHandle_t packet_queue;
 
-// BLE抓包回调函数
-static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
+/* RID 服务 UUID (小端): 0xFFFA */
+#define RID_UUID_HIGH  0xFF
+#define RID_UUID_LOW   0xFA
+
+/* 检查 BLE AD 数据中是否包含 RID 服务 0xFAFF */
+static bool is_rid_packet(const uint8_t *data, uint16_t len)
 {
-    switch (event) {
-        case ESP_GAP_BLE_SCAN_RESULT_EVT: {
-            esp_ble_gap_cb_param_t *scan_result = param;
-            switch (scan_result->scan_rst.search_evt) {
-                case ESP_GAP_SEARCH_INQ_RES_EVT: {
-                    // 检查数据包长度是否符合要求
-                    uint16_t adv_len = scan_result->scan_rst.adv_data_len;
-                    uint16_t rsp_len = scan_result->scan_rst.scan_rsp_len;
-                    uint16_t total_len = adv_len + rsp_len;
-                    
-                    // 至少需要5字节才能检查前5个字节
-                    if (total_len < 6) {
-                        break;
-                    }
-                    
-                    // 检查前5个字节是否符合过滤条件
-                    if (scan_result->scan_rst.ble_adv[0] == 0x1E &&
-                        scan_result->scan_rst.ble_adv[1] == 0x16 &&
-                        scan_result->scan_rst.ble_adv[2] == 0xFA &&
-                        scan_result->scan_rst.ble_adv[3] == 0xFF &&
-                        scan_result->scan_rst.ble_adv[4] == 0x0D) {
-                        
-                        // 创建数据包结构
-                        ble_packet_t packet;
-                        packet.timestamp = esp_log_timestamp();
-                        packet.rssi = scan_result->scan_rst.rssi;
-                        packet.evt_type = scan_result->scan_rst.ble_evt_type;
-                        
-                        // 确保不超过缓冲区大小
-                        packet.length = (total_len > sizeof(packet.data)) ? sizeof(packet.data) : total_len;
-                        
-                        // 复制整个数据块
-                        memcpy(packet.data, scan_result->scan_rst.ble_adv, packet.length);
-                        
-                        // 将匹配的数据包发送到队列
-                        if (packet_queue != NULL) {
-                            // 如果队列已满，丢弃最旧的数据包
-                            if (uxQueueMessagesWaiting(packet_queue) >= 100) {
-                                ble_packet_t dummy;
-                                xQueueReceive(packet_queue, &dummy, 0);
-                            }
-                            xQueueSendToBack(packet_queue, &packet, 0);
-                        }
-                    }
-                    break;
-                }
-                case ESP_GAP_SEARCH_INQ_CMPL_EVT:
-                    ESP_LOGI(TAG, "Inquiry complete");
-                    break;
-                    
-                default:
-                    break;
-            }
-            break;
+    int idx = 0;
+    while (idx + 1 < len) {
+        uint8_t ad_len = data[idx];
+        if (ad_len == 0) break;
+        idx++;
+        if (idx + ad_len > len) break;
+        uint8_t ad_type = data[idx];
+        idx++;
+
+        /* Service Data - 16-bit UUID */
+        if (ad_type == 0x16 && ad_len >= 3) {
+            if (data[idx] == RID_UUID_LOW && data[idx+1] == RID_UUID_HIGH)
+                return true;
         }
-        
-        case ESP_GAP_BLE_SCAN_PARAM_SET_COMPLETE_EVT:
-            ESP_LOGI(TAG, "Scan parameters set");
-            break;
-            
-        case ESP_GAP_BLE_SCAN_START_COMPLETE_EVT:
-            if (param->scan_start_cmpl.status != ESP_BT_STATUS_SUCCESS) {
-                ESP_LOGE(TAG, "Scan start failed: %d", param->scan_start_cmpl.status);
-            } else {
-                ESP_LOGI(TAG, "Scan started successfully");
-            }
-            break;
-            
-        case ESP_GAP_BLE_SCAN_STOP_COMPLETE_EVT:
-            if (param->scan_stop_cmpl.status != ESP_BT_STATUS_SUCCESS) {
-                ESP_LOGE(TAG, "Scan stop failed: %d", param->scan_stop_cmpl.status);
-            } else {
-                ESP_LOGI(TAG, "Scan stopped successfully");
-            }
-            break;
-            
-        default:
-            break;
+        /* Manufacturer Specific Data */
+        if (ad_type == 0xFF && ad_len >= 2) {
+            if (data[idx] == RID_UUID_LOW && data[idx+1] == RID_UUID_HIGH)
+                return true;
+        }
+        idx += (ad_len - 1);
+    }
+    return false;
+}
+
+/* 打印 GB 46750 TLV */
+static void dump_gb_tlv(const uint8_t *data, int offset, int len)
+{
+    if (offset + 3 > len) return;
+    if (data[offset] != 0xFF) return;
+
+    printf("    [GB46750 TLV]\n");
+    printf("    header: FF %02X %02X (version data_len)\n", data[offset+1], data[offset+2]);
+
+    int remaining = len - offset;
+    printf("    raw: ");
+    for (int i = 0; i < remaining && i < 80; i++)
+        printf("%02X ", data[offset + i]);
+    printf("\n");
+
+    if (offset + 6 <= len) {
+        printf("    bitmap[0]=0x%02X", data[offset+3]);
+        if (offset + 7 <= len) printf(" [1]=0x%02X", data[offset+4]);
+        if (offset + 8 <= len) printf(" [2]=0x%02X", data[offset+5]);
+        printf("\n");
     }
 }
 
-// 初始化BLE控制器
+/* 打印 AD structure 各元素 */
+static void dump_ad_elements(const uint8_t *data, uint16_t len)
+{
+    int idx = 0;
+    while (idx + 1 < len) {
+        uint8_t ad_len = data[idx];
+        if (ad_len == 0) { idx++; continue; }
+        idx++;
+        if (idx + ad_len > len) break;
+        uint8_t ad_type = data[idx];
+
+        const char *type_name = "?";
+        switch (ad_type) {
+            case 0x01: type_name = "Flags"; break;
+            case 0x08: type_name = "ShortName"; break;
+            case 0x09: type_name = "FullName"; break;
+            case 0x16: type_name = "Service16"; break;
+            case 0xFF: type_name = "ManuSpecific"; break;
+        }
+        printf("    AD[len=%d type=0x%02X %s]: ", ad_len, ad_type, type_name);
+        for (int j = 0; j < ad_len && j < 20; j++)
+            printf("%02X ", data[idx + j]);
+        if (ad_len > 20) printf("...");
+        printf("\n");
+
+        /* 检测 RID UUID */
+        if ((ad_type == 0x16 || ad_type == 0xFF) && ad_len >= 3 &&
+            data[idx] == RID_UUID_LOW && data[idx+1] == RID_UUID_HIGH) {
+
+            /* AD 类型 0x16 的 ODID subtype 在 idx+2 */
+            if (ad_type == 0x16) {
+                if (ad_len >= 4 && data[idx+2] == 0x0D) {
+                    printf("      -> ASTM F3411 (旧国标) counter=%d\n", data[idx+3]);
+                    /* data from idx+4 onwards */
+                    dump_gb_tlv(data, idx+3, ad_len-1);
+                } else {
+                    printf("      -> RID Service Data (ad_len=%d)\n", ad_len);
+                    /* 检查 idx+2 是否 0xFF (GB TLV 直接跟在 UUID 后) */
+                    dump_gb_tlv(data, idx+2, ad_len);
+                }
+            }
+            /* AD 类型 0xFF 的 manufacturer data, idx+2 开始可能是 GB TLV */
+            if (ad_type == 0xFF) {
+                printf("      -> RID Manufacturer Data\n");
+                dump_gb_tlv(data, idx+2, ad_len);
+            }
+        }
+
+        idx += (ad_len - 1);
+    }
+}
+
+/* 打印一个包 */
+static void print_packet(const ble_packet_t *pkt)
+{
+    printf("\n======== [BLE Packet] ========\n");
+    printf("  RSSI: %d dBm\n", pkt->rssi);
+
+    /* PHY */
+    printf("  PHY: ");
+    switch (pkt->primary_phy) {
+        case 1: printf("1M"); break;
+        case 2: printf("2M"); break;
+        case 3: printf("CODED"); break;
+        default: printf("PHY_%d", pkt->primary_phy);
+    }
+    if (pkt->secondary_phy != pkt->primary_phy && pkt->secondary_phy != 0) {
+        printf(" -> ");
+        switch (pkt->secondary_phy) {
+            case 1: printf("1M"); break;
+            case 2: printf("2M"); break;
+            case 3: printf("CODED"); break;
+            default: printf("PHY_%d", pkt->secondary_phy);
+        }
+    }
+
+    printf("  SID: %d", pkt->sid);
+    printf("  MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
+           pkt->adv_addr[5], pkt->adv_addr[4], pkt->adv_addr[3],
+           pkt->adv_addr[2], pkt->adv_addr[1], pkt->adv_addr[0]);
+    printf("  Total: %d bytes\n", pkt->length);
+
+    /* 打印 AD 结构 */
+    dump_ad_elements(pkt->data, pkt->length);
+
+    /* 完整 hex dump */
+    printf("  Full hex:\n");
+    for (int i = 0; i < pkt->length; i += 16) {
+        int chunk = (pkt->length - i) > 16 ? 16 : pkt->length - i;
+        printf("    %04X: ", i);
+        for (int j = 0; j < chunk; j++) printf("%02X ", pkt->data[i + j]);
+        for (int j = chunk; j < 16; j++) printf("   ");
+        printf(" ");
+        for (int j = 0; j < chunk; j++) {
+            uint8_t c = pkt->data[i + j];
+            printf("%c", (c >= 32 && c <= 126) ? c : '.');
+        }
+        printf("\n");
+    }
+    printf("\n");
+}
+
+/* ========== BLE 5.0 Extended Scan 回调 ========== */
+
+static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
+{
+    switch (event) {
+    case ESP_GAP_BLE_EXT_ADV_REPORT_EVT:
+    {
+        esp_ble_gap_ext_adv_report_t *report = &param->ext_adv_report.params;
+
+        uint16_t adv_data_len = report->adv_data_len;
+        if (adv_data_len < 5) break;
+
+        /* 过滤: 只保留 RID 包 (含 0xFAFF) */
+        if (!is_rid_packet(report->adv_data, adv_data_len))
+            break;
+
+        ble_packet_t packet;
+        memset(&packet, 0, sizeof(packet));
+        packet.timestamp = esp_log_timestamp();
+        packet.rssi = report->rssi;
+        packet.primary_phy = report->primary_phy;
+        packet.secondary_phy = report->secondly_phy;
+        packet.sid = report->sid;
+        memcpy(packet.adv_addr, report->addr, 6);
+
+        packet.length = (adv_data_len > sizeof(packet.data)) ? sizeof(packet.data) : adv_data_len;
+        memcpy(packet.data, report->adv_data, packet.length);
+
+        if (packet_queue != NULL) {
+            if (uxQueueMessagesWaiting(packet_queue) >= 50) {
+                ble_packet_t dummy;
+                xQueueReceive(packet_queue, &dummy, 0);
+            }
+            xQueueSendToBack(packet_queue, &packet, 0);
+        }
+        break;
+    }
+
+    case ESP_GAP_BLE_SET_EXT_SCAN_PARAMS_COMPLETE_EVT:
+        ESP_LOGI(TAG, "Ext scan params set, status=%d", param->set_ext_scan_params.status);
+        break;
+
+    case ESP_GAP_BLE_EXT_SCAN_START_COMPLETE_EVT:
+        if (param->ext_scan_start.status != ESP_BT_STATUS_SUCCESS)
+            ESP_LOGE(TAG, "Ext scan start failed: %d", param->ext_scan_start.status);
+        else
+            ESP_LOGI(TAG, "Ext scan started successfully");
+        break;
+
+    case ESP_GAP_BLE_EXT_SCAN_STOP_COMPLETE_EVT:
+        ESP_LOGI(TAG, "Ext scan stopped, status=%d", param->ext_scan_stop.status);
+        break;
+
+    default:
+        break;
+    }
+}
+
+/* ========== BLE 初始化 ========== */
+
 static void ble_init(void)
 {
-    // 初始化蓝牙控制器
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
     esp_err_t ret = esp_bt_controller_init(&bt_cfg);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Bluetooth Controller initialize failed: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "BT controller init failed: %s", esp_err_to_name(ret));
         return;
     }
 
-    // 启用蓝牙控制器
     ret = esp_bt_controller_enable(ESP_BT_MODE_BLE);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Bluetooth Controller enable failed: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "BT controller enable failed: %s", esp_err_to_name(ret));
         return;
     }
 
-    // 初始化Bluedroid栈
     ret = esp_bluedroid_init();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Bluedroid initialize failed: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Bluedroid init failed: %s", esp_err_to_name(ret));
         return;
     }
 
-    // 启用Bluedroid栈
     ret = esp_bluedroid_enable();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Bluedroid enable failed: %s", esp_err_to_name(ret));
         return;
     }
 
-    // 注册GAP回调函数
     ret = esp_ble_gap_register_callback(esp_gap_cb);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "GAP callback register failed: %s", esp_err_to_name(ret));
         return;
     }
 
-    // 设置扫描参数 - 支持BLE 4.0和5.0
-    esp_ble_scan_params_t ble_scan_params = {
-        .scan_type = BLE_SCAN_TYPE_PASSIVE,        // 被动扫描
-        .own_addr_type = BLE_ADDR_TYPE_RANDOM,     // 使用随机地址保护隐私
-        .scan_filter_policy = BLE_SCAN_FILTER_ALLOW_ALL,
-        .scan_interval = 0x100,                    // 扫描间隔 (256 * 0.625ms = 160ms)
-        .scan_window = 0x50,                       // 扫描窗口 (80 * 0.625ms = 50ms)
-        .scan_duplicate = BLE_SCAN_DUPLICATE_DISABLE // 禁用重复过滤
+    /* BLE 5.0 Extended Scan 参数 */
+    esp_ble_ext_scan_params_t ext_scan_params = {
+        .own_addr_type = BLE_ADDR_TYPE_RANDOM,
+        .filter_policy = BLE_SCAN_FILTER_ALLOW_ALL,
+        .scan_duplicate = BLE_SCAN_DUPLICATE_DISABLE,
+        .cfg_mask = ESP_BLE_GAP_EXT_SCAN_CFG_UNCODE_MASK | ESP_BLE_GAP_EXT_SCAN_CFG_CODE_MASK,
+        .uncoded_cfg = {
+            .scan_type = BLE_SCAN_TYPE_PASSIVE,
+            .scan_interval = 0x100,    /* 256 × 0.625ms = 160ms */
+            .scan_window = 0x50,       /* 80 × 0.625ms = 50ms */
+        },
+        .coded_cfg = {
+            .scan_type = BLE_SCAN_TYPE_PASSIVE,
+            .scan_interval = 0x100,
+            .scan_window = 0x50,
+        },
     };
-    
-    // 设置扫描参数
-    ret = esp_ble_gap_set_scan_params(&ble_scan_params);
+
+    ret = esp_ble_gap_set_ext_scan_params(&ext_scan_params);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Set scan parameters failed: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Set ext scan params failed: %s", esp_err_to_name(ret));
         return;
     }
 }
 
-// 开始BLE扫描
-void start_ble_scan(void)
+static void start_ext_scan(void)
 {
-    esp_err_t ret = esp_ble_gap_start_scanning(0);  // 0表示无限扫描
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Start scanning failed: %s", esp_err_to_name(ret));
-    }
+    esp_err_t ret = esp_ble_gap_start_ext_scan(0, 0);
+    if (ret != ESP_OK)
+        ESP_LOGE(TAG, "Start ext scan failed: %s", esp_err_to_name(ret));
 }
 
-// 获取事件类型字符串
-const char* get_evt_type_string(esp_ble_evt_type_t evt_type) {
-    switch (evt_type) {
-        case ESP_BLE_EVT_CONN_ADV: return "CONNECTABLE_ADV";
-        case ESP_BLE_EVT_CONN_DIR_ADV: return "DIRECTED_ADV";
-        case ESP_BLE_EVT_DISC_ADV: return "SCANNABLE_ADV";
-        case ESP_BLE_EVT_NON_CONN_ADV: return "NON_CONNECTABLE_ADV";
-        case ESP_BLE_EVT_SCAN_RSP: return "SCAN_RESPONSE";
-        default: return "UNKNOWN";
-    }
-}
+/* ========== 处理任务 ========== */
 
-// 打印数据包内容（原始数据和ASCII）
-void print_packet(ble_packet_t *packet)
-{
-    // 打印基本信息
-    printf("\n[Filtered BLE Packet] Timestamp: %ld, RSSI: %ddB, Event: %s, Length: %d\n", 
-           packet->timestamp, packet->rssi, 
-           get_evt_type_string(packet->evt_type),
-           packet->length);
-    
-    // 打印原始数据（十六进制格式）
-    printf("Raw Data:\n");
-    for (int i = 0; i < packet->length; i += 16) {
-        uint16_t chunk_size = (packet->length - i) > 16 ? 16 : packet->length - i;
-        printf("%04X: ", i);
-        
-        // 打印十六进制
-        for (int j = 0; j < chunk_size; j++) {
-            printf("%02X ", packet->data[i + j]);
-        }
-        
-        // 对齐
-        for (int j = chunk_size; j < 16; j++) {
-            printf("   ");
-        }
-        
-        printf(" ");
-        
-        // 打印ASCII
-        for (int j = 0; j < chunk_size; j++) {
-            uint8_t c = packet->data[i + j];
-            printf("%c", (c >= 32 && c <= 126) ? c : '.');
-        }
-        
-        printf("\n");
-    }
-    printf("\n");
-}
-
-// 数据包处理任务
 void packet_handler_task(void *pvParameters)
 {
     ble_packet_t packet;
-    
     while (1) {
         if (xQueueReceive(packet_queue, &packet, portMAX_DELAY) == pdPASS) {
-            // 打印捕获的数据包
             print_packet(&packet);
         }
-        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
+/* ========== 公开 API ========== */
+
 void ble_sniffer_init(void)
 {
-    ESP_LOGI(TAG, "Initializing BLE Sniffer...");
-    
-    // 创建数据包队列
-    packet_queue = xQueueCreate(100, sizeof(ble_packet_t));
+    ESP_LOGI(TAG, "Initializing BLE Sniffer (Extended Scan)...");
+
+    packet_queue = xQueueCreate(50, sizeof(ble_packet_t));
     if (packet_queue == NULL) {
         ESP_LOGE(TAG, "Failed to create packet queue");
         return;
     }
-    
-    // 初始化BLE抓包器
-    ble_init();
-    
-    // 创建数据包处理任务
-    xTaskCreate(packet_handler_task, "packet_handler", 4096, NULL, 5, NULL);
-    
-    // 等待一段时间后开始扫描
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    start_ble_scan();
-    
-    ESP_LOGI(TAG, "BLE Sniffer started. Capturing BLE packets...");
-    ESP_LOGI(TAG, "Listening for BLE 4.0 and 5.0 packets...");
-    
 
+    ble_init();
+
+    xTaskCreate(packet_handler_task, "packet_handler", 4096, NULL, 5, NULL);
+
+    vTaskDelay(pdMS_TO_TICKS(1500));
+    start_ext_scan();
+
+    ESP_LOGI(TAG, "BLE Sniffer started! Scanning all PHYs (1M, 2M, CODED).");
+    ESP_LOGI(TAG, "Filtering for RID packets (UUID 0xFAFF).");
+    ESP_LOGI(TAG, "Printing both old (ASTM) and new (GB46750) RID data.");
 }
