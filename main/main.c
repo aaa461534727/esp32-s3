@@ -78,12 +78,12 @@ void app_main(void)
     power_gpio_init();
     // wifi_send_init();    
     // ble_send_init();
-    ble_sniffer_init();
+    // ble_sniffer_init();
     // gps_Interface_init();//GPS
     // mavlink_Interface_init();//无人机协议
     // cpu_info_init();
     // ec200x_init();
-    // rid_wifi_sniffer_init();
+    rid_wifi_sniffer_init();
     // udp_client_init();
     // iot_init();
     // start_cloud_update();

@@ -1,4 +1,5 @@
 #include "rid_wifi_sniffer.h"
+#include "rid_parse_gb.h"  /* GB 46750 decode */
 
 static const char *TAG = "rid_wifi_sniffer";
 //添加初始化状态标志
@@ -341,7 +342,53 @@ void get_data_from_index(unsigned char *data, int data_size, int start_index, in
     // 使用memcpy从data数组复制数据到buffer
     memcpy(buffer, data + start_index, len);
 }
-// data: [DD][21][FA][0B][BC][0D][B7][F2][19][01][02][11][32][30][35][31][46][45][41][42][50][54][30][30][30][30][30][30][30][31][33][35][00]
+
+/*
+ * recv_parse_gb46750_data — 接收并解析 GB 46750 新国标 WiFi Beacon 数据
+ * 从 C738VR 移植
+ * data: 从 0xDD 开始的 802.11 vendor IE 数据
+ * data_len: data 的总长度
+ */
+static void recv_parse_gb46750_data(unsigned char *data, int data_len, int8_t rssi, int channel)
+{
+    if (data == NULL || data_len < 8) return;
+
+    /* 跳过 802.11 vendor specific element header
+     * 格式: [DD][len][FA][0B][BC][0D][msg_cnt][FF][ver][data_len][bitmap][content...]
+     * gb_offset = 7 (DD+len+OUI(4B)+msg_cnt)
+     */
+    int gb_offset = 0;
+    if (data[0] == 0xDD && data[2] == 0xFA && data[3] == 0x0B &&
+        data[4] == 0xBC && data[5] == 0x0D) {
+        gb_offset = 7;
+    }
+
+    if (data[gb_offset] != 0xFF) return;
+
+    rid_info_t info;
+    memset(&info, 0, sizeof(info));
+    info.rssi = rssi;
+    info.channel = channel;
+
+    int new_offset = rid_parse_gb(data, gb_offset, data_len - gb_offset, &info);
+    if (new_offset <= 0) return;
+
+    info.protocol_type = 1;
+
+    /* 加链表 */
+    if (rid_mutex) xSemaphoreTake(rid_mutex, portMAX_DELAY);
+    addOrUpdateNode(&wifi_head, info);
+    if (rid_mutex) xSemaphoreGive(rid_mutex);
+
+    if (test_mode) {
+        printf("GB46750 parsed: upi=%.20s reg_id=%.8s lon=%.7f lat=%.7f\n",
+               info.upi, info.reg_id, info.lon, info.lat);
+    }
+}
+
+/* data: [DD][21][FA][0B][BC][0D][B7][F2][19][01][02][11][32][30][35][31][46][45][41][42][50][54][30][30][30][30][30][30][30][31][33][35][00]
+ * 旧国标 ASTM 解析
+ */
 void recv_parse_data(unsigned char *data, int8_t rssi,int channel,int channel_busy_time,int loss_rate)
 {
     int i = 0, cnt = 0, offset = 0, sub_num = 0, data_err = 0;
@@ -733,9 +780,16 @@ static void wifi_sniffer_packet_handler(void* buf, wifi_promiscuous_pkt_type_t t
                    pkt->payload[beacon_offset+4]==0xBC && 
                    pkt->payload[beacon_offset+5] == 0x0D) { // Remote ID
                     length = pkt->payload[beacon_offset+1];
-                    if (length <= MAX_PAYLOAD) {
-                        get_data_from_index(pkt->payload, pkt->rx_ctrl.sig_len, 
-                                          beacon_offset, length, data);
+                    if (length > MAX_PAYLOAD) continue;
+                    get_data_from_index(pkt->payload, pkt->rx_ctrl.sig_len, 
+                                      beacon_offset, length, data);
+                    /* 判断是新国标 GB46750 还是旧国标 ASTM
+                     * data[7] = 0xFF → 新国标 (跳过 DD+len+OUI+msg_cnt)
+                     * data[7] >> 4 == 0xF → 旧国标 ASTM
+                     */
+                    if (length >= 8 && data[7] == 0xFF) {
+                        recv_parse_gb46750_data(data, length, packet_info.rssi, channel);
+                    } else {
                         recv_parse_data(data, packet_info.rssi, channel, 0, 0);
                     }
                 }
@@ -793,6 +847,10 @@ void rid_wifi_sniffer_init(void)
         ESP_LOGW(TAG, "WiFi sniffer already initialized");
         return;
     }
+
+    // 初始化网络接口层 (如果之前未初始化)
+    esp_netif_init();
+    esp_event_loop_create_default();
     
     // 创建默认AP网络接口并保存句柄
     s_ap_netif = esp_netif_create_default_wifi_ap();

@@ -17,4 +17,15 @@ struct rid_info;
  */
 int rid_gb_encode(unsigned char *buf, int buf_len, struct rid_info *info);
 
+/*
+ * GB 46750-2025 TLV 解析函数
+ * 将 GB TLV 字节流解析到 rid_info
+ * data: 输入 buffer（从 0xFF 开始）
+ * offset: 0xFF 的偏移
+ * packet_len: 从 offset 到 buffer 末尾的长度
+ * info: 输出
+ * 返回: 解析后的 idx，<=0 = 失败
+ */
+int rid_parse_gb(unsigned char *data, int offset, int packet_len, struct rid_info *info);
+
 #endif

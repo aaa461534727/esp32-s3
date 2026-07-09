@@ -239,3 +239,249 @@ int rid_gb_encode(unsigned char *buf, int buf_len, struct rid_info *info)
 
     return idx;
 }
+
+/* ===================================================================
+ * rid_parse_gb — GB 46750-2025 TLV 解析函数（对应 C738VR rid_parse_gb.c）
+ * 从 C738VR 移植，适配 ESP32-S3 平台
+ * =================================================================== */
+
+/* Little-endian read helpers */
+#define LE16_TO_HOST(p)   ((uint16_t)((p)[0] | ((p)[1] << 8)))
+#define LE32_TO_HOST(p)   ((uint32_t)((p)[0] | ((p)[1] << 8) | ((p)[2] << 16) | ((p)[3] << 24)))
+
+/* 默认精度值 (GB 标准) */
+#define GB_DEFAULT_HOR_ACCURACY  2
+#define GB_DEFAULT_VER_ACCURACY  2
+#define GB_DEFAULT_SPEED_ACCURACY 2
+
+int rid_parse_gb(unsigned char *data, int offset, int packet_len, struct rid_info *info)
+{
+    if (data == NULL || info == NULL) return 0;
+    if (packet_len <= 0 || offset < 0) return 0;
+
+    int idx = offset;
+    const int buf_end = offset + packet_len;  /* 绝对边界 */
+
+    /* === Validate GB magic === */
+    if (idx + 3 > buf_end) return 0;
+    if (data[idx] != 0xFF) {
+        printf("GB: magic mismatch data[%d]=0x%02X\n", idx, data[idx]);
+        return 0;
+    }
+    idx++;  /* skip 0xFF */
+    idx++;  /* skip version */
+    if (idx >= buf_end) return 0;
+
+    int data_len = data[idx];
+    idx++;  /* skip data length */
+
+    /*
+     * data_len 是 bitmap + content 总长度
+     * content_end = 标准期望的末尾；如果超实际 buffer 则用 buf_end 兜底
+     */
+    int content_end = idx + data_len;
+    if (content_end > buf_end) content_end = buf_end;
+
+    /* === Read bitmap (至少 3 字节, 扩展直到 bit0=0) === */
+    uint8_t bmp[8] = {0};
+    int bmp_bytes = 0;
+    while (bmp_bytes < 8 && idx < buf_end) {
+        bmp[bmp_bytes] = data[idx];
+        idx++;
+        bmp_bytes++;
+        if ((bmp[bmp_bytes - 1] & 0x01) == 0) break;
+    }
+
+    /* 记录 bitmap */
+    if (bmp_bytes >= 1) info->bitmap_b0 = bmp[0];
+    if (bmp_bytes >= 2) info->bitmap_b1 = bmp[1];
+    if (bmp_bytes >= 3) info->bitmap_b2 = bmp[2];
+
+    /* === Parse content fields === */
+
+    /* Field 001: UPI (20 B ASCII) */
+    if (bmp[0] & 0x80) {
+        if (idx + 20 > content_end) return idx;
+        memcpy(info->upi, data + idx, 20);
+        info->upi[20] = '\0';
+        memcpy(info->uas_id, data + idx, 20);
+        info->uas_id[20] = '\0';
+        memcpy(info->sn, data + idx, 20);
+        info->sn[20] = '\0';
+        idx += 20;
+    }
+
+    /* Field 002: reg_id (8 B ASCII) */
+    if (bmp[0] & 0x40) {
+        if (idx + 8 > content_end) return idx;
+        memcpy(info->reg_id, data + idx, 8);
+        info->reg_id[8] = '\0';
+        idx += 8;
+    }
+
+    /* Field 003: gb_category (1 B) */
+    if (bmp[0] & 0x20) {
+        if (idx + 1 > content_end) return idx;
+        info->gb_category = data[idx];
+        idx++;
+    }
+
+    /* Field 004: gb_class (1 B) */
+    if (bmp[0] & 0x10) {
+        if (idx + 1 > content_end) return idx;
+        info->gb_class = data[idx];
+        idx++;
+    }
+
+    /* Field 005: ilot_loc_type (1 B) */
+    if (bmp[0] & 0x08) {
+        if (idx + 1 > content_end) return idx;
+        info->ilot_loc_type = data[idx];
+        info->operator_type = data[idx];
+        idx++;
+    }
+
+    /* Field 006: 遥控站位置 (8 B: int32 lon + int32 lat, LE x1e-7) */
+    if (bmp[0] & 0x04) {
+        if (idx + 8 > content_end) return idx;
+        int32_t lon_raw = (int32_t)LE32_TO_HOST(data + idx);
+        int32_t lat_raw = (int32_t)LE32_TO_HOST(data + idx + 4);
+        info->ilot_lon_gb = lon_raw * 1e-7f;
+        info->ilot_lat_gb = lat_raw * 1e-7f;
+        info->ilotLon = info->ilot_lon_gb;
+        info->ilotLat = info->ilot_lat_gb;
+        idx += 8;
+    }
+
+    /* Field 007: 遥控站高度 (2 B LE u16, (real+1000)*2) */
+    if (bmp[0] & 0x02) {
+        if (idx + 2 > content_end) return idx;
+        int16_t alt_raw = (int16_t)LE16_TO_HOST(data + idx);
+        info->ilot_height = (alt_raw / 2.0f) - 1000.0f;
+        info->operator_altitude = info->ilot_height;
+        idx += 2;
+    }
+
+    /* Field 008: UA 位置 (8 B: int32 lon + int32 lat) */
+    if (bmp_bytes >= 2 && (bmp[1] & 0x80)) {
+        if (idx + 8 > content_end) return idx;
+        int32_t lon_raw = (int32_t)LE32_TO_HOST(data + idx);
+        int32_t lat_raw = (int32_t)LE32_TO_HOST(data + idx + 4);
+        info->ua_lon_gb = lon_raw * 1e-7f;
+        info->ua_lat_gb = lat_raw * 1e-7f;
+        info->lon = info->ua_lon_gb;
+        info->lat = info->ua_lat_gb;
+        idx += 8;
+    }
+
+    /* Field 009: 航迹角 (2 B LE u16, real*10) */
+    if (bmp_bytes >= 2 && (bmp[1] & 0x40)) {
+        if (idx + 2 > content_end) return idx;
+        uint16_t angle_raw = LE16_TO_HOST(data + idx);
+        info->direction = (angle_raw == 0xFFFF) ? -1.0f : (angle_raw / 10.0f);
+        idx += 2;
+    }
+
+    /* Field 010: 地速 (2 B LE u16, real*10) */
+    if (bmp_bytes >= 2 && (bmp[1] & 0x20)) {
+        if (idx + 2 > content_end) return idx;
+        uint16_t speed_raw = LE16_TO_HOST(data + idx);
+        info->speed = (speed_raw == 0xFFFF) ? -1.0f : (speed_raw / 10.0f);
+        idx += 2;
+    }
+
+    /* Field 011: 相对高度 (2 B LE i16, (real+9000)*2) */
+    if (bmp_bytes >= 2 && (bmp[1] & 0x10)) {
+        if (idx + 2 > content_end) return idx;
+        int16_t alt_raw = (int16_t)LE16_TO_HOST(data + idx);
+        info->alt = (alt_raw / 2.0f) - 9000.0f;
+        idx += 2;
+    }
+
+    /* Field 012: 垂直速度 (1 B: bit7=sign, low7=abs*2) */
+    if (bmp_bytes >= 2 && (bmp[1] & 0x08)) {
+        if (idx + 1 > content_end) return idx;
+        uint8_t vs_raw = data[idx];
+        if (vs_raw == 0xFF) {
+            info->v_speed = -1.0f;
+        } else {
+            info->v_speed = ((vs_raw & 0x80) ? -1 : 1) * ((vs_raw & 0x7F) / 2.0f);
+        }
+        idx++;
+    }
+
+    /* Field 013: 大地高度 (2 B LE i16, (real+1000)*2) */
+    if (bmp_bytes >= 2 && (bmp[1] & 0x04)) {
+        if (idx + 2 > content_end) return idx;
+        int16_t h_raw = (int16_t)LE16_TO_HOST(data + idx);
+        info->geo_high = (h_raw / 2.0f) - 1000.0f;
+        idx += 2;
+    }
+
+    /* Field 014: 气压高度 (2 B LE i16, (real+1000)*2) */
+    if (bmp_bytes >= 2 && (bmp[1] & 0x02)) {
+        if (idx + 2 > content_end) return idx;
+        int16_t h_raw = (int16_t)LE16_TO_HOST(data + idx);
+        info->air_high = (h_raw / 2.0f) - 1000.0f;
+        idx += 2;
+    }
+
+    /* Field 015: 运行状态 (1 B enum) */
+    if (bmp_bytes >= 3 && (bmp[2] & 0x80)) {
+        if (idx + 1 > content_end) return idx;
+        info->status = data[idx];
+        idx++;
+    }
+
+    /* Field 016: 坐标系类型 (1 B) */
+    if (bmp_bytes >= 3 && (bmp[2] & 0x40)) {
+        if (idx + 1 > content_end) return idx;
+        info->coord_system = data[idx];
+        idx++;
+    }
+
+    /* Field 017: 水平精度 (1 B) */
+    if (bmp_bytes >= 3 && (bmp[2] & 0x20)) {
+        if (idx + 1 > content_end) return idx;
+        info->hor_accuracy = data[idx];
+        idx++;
+    }
+
+    /* Field 018: 垂直精度 (1 B) */
+    if (bmp_bytes >= 3 && (bmp[2] & 0x10)) {
+        if (idx + 1 > content_end) return idx;
+        info->ver_accuracy = data[idx];
+        idx++;
+    }
+
+    /* Field 019: 速度精度 (1 B) */
+    if (bmp_bytes >= 3 && (bmp[2] & 0x08)) {
+        if (idx + 1 > content_end) return idx;
+        info->speed_accuracy = data[idx];
+        idx++;
+    }
+
+    /* Field 020: 时间戳 (6 B LE u48, Unix epoch ms) */
+    if (bmp_bytes >= 3 && (bmp[2] & 0x04)) {
+        if (idx + 6 > content_end) return idx;
+        uint64_t ms = 0;
+        for (int i = 0; i < 6; i++)
+            ms |= ((uint64_t)data[idx + i]) << (8 * i);
+        info->unix_ts_ms = ms;
+        info->timestamp = (unsigned int)(ms / 1000);
+        idx += 6;
+    }
+
+    /* Field 021: 时间戳精度 (1 B) */
+    if (bmp_bytes >= 3 && (bmp[2] & 0x02)) {
+        if (idx + 1 > content_end) return idx;
+        info->ts_accuracy = data[idx];
+        info->time_acc = data[idx];
+        idx++;
+    }
+
+    /* 标记为新国标 */
+    info->protocol_type = 1;
+
+    return idx;
+}
